@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { Location01Icon } from "hugeicons-react";
 import { Shrine, CITIES } from "@/lib/shrine-data";
 
-mapboxgl.accessToken = "pk.eyJ1Ijoib2x1d2FtYXlvd2EtbGFsZWphaXllIiwiYSI6ImNtdG12cGI4eTAwZ2syenF4ZW5hYzRnbGkifQ.3duJHhCQJ9xKi2bN23ugJw";
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, selectedId }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null }){
   const ref = useRef<HTMLDivElement>(null);
