@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,9 @@ type Mem = { id: string; handle: string; city: string; line: string; hidden: boo
 // Kill switch — not linked anywhere in the app. Open /admin directly.
 // Needs ADMIN_SECRET (+ SUPABASE_SERVICE_ROLE_KEY for full power) in Vercel env.
 export default function Admin() {
-  const [secret, setSecret] = useState(() => sessionStorage.getItem("shrine_admin") || "");
+  // sessionStorage only exists in the browser — read after mount so /admin prerenders cleanly
+  const [secret, setSecret] = useState("");
+  useEffect(() => { try { setSecret(sessionStorage.getItem("shrine_admin") || ""); } catch {} }, []);
   const [reports, setReports] = useState<Report[]>([]);
   const [mems, setMems] = useState<Record<string, Mem>>({});
   const [loaded, setLoaded] = useState(false);
