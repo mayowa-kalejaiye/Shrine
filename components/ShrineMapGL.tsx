@@ -64,7 +64,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     resumeTimer = setTimeout(()=> { spinPaused = false; }, 7000);
     const spin = setInterval(()=>{
       const sel = (map as any)._selectedId;
-      if(spinPaused || userInteracting || sel) return;
+      if(spinPaused || userInteracting || sel || traceRef.current) return;
       if(document.hidden) return;
       if(map.isMoving() || map.isZooming() || map.isRotating()) return;
       if(map.getZoom() > 4) return; // world globe only — never while exploring streets
