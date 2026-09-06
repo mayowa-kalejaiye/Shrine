@@ -56,6 +56,19 @@ export default function ShrineFable(){
     }catch{ toast("report failed — try again"); }
   }
   const [traceHandle, setTraceHandle] = useState<string|null>(null);
+  // shuffle — meet a stranger instead of scrolling. jumps to a random person's memory.
+  function shuffleToRandom(){
+    const people = [...new Set(shrines.map(s=> s.handle))].filter(h=> h && h!=="you");
+    if(!people.length){ toast("no strangers yet — pin the first memory"); return; }
+    const others = selected && people.length > 1 ? people.filter(h=> h!==selected.handle) : people;
+    const pick = others[Math.floor(Math.random()*others.length)];
+    const mems = shrines.filter(s=> s.handle===pick);
+    const first = mems[Math.floor(Math.random()*mems.length)];
+    document.getElementById("collection-drawer")?.classList.add("-translate-x-full");
+    setShowTimeline(false);
+    setSelected(first);
+    toast(`@${pick} • ${first.city}`, { description: `"${first.line.slice(0,52)}..."`, duration: 3500 });
+  }
   const [userEmail, setUserEmail] = useState<string|null>(null);
   const [magicEmail, setMagicEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
@@ -367,6 +380,7 @@ export default function ShrineFable(){
               <span className={`w-1.5 h-1.5 rounded-full ${userEmail ? "bg-emerald-400" : "bg-white/30"}`} />{handle && handle!=="you" ? `@${handle}` : "sign in"}
             </button>
             <button onClick={()=> setShowTimeline(true)} className="inline-flex shrink-0 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-black/60 backdrop-blur-xl border border-white/15 text-white/80 hover:text-white hover:bg-black/80 px-3 sm:px-4 py-2 rounded-full">timeline</button>
+            <button onClick={shuffleToRandom} title="meet a stranger — jump to a random person" className="inline-flex shrink-0 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-black/60 backdrop-blur-xl border border-white/15 text-white/80 hover:text-white hover:bg-black/80 px-3 sm:px-4 py-2 rounded-full active:scale-95">shuffle</button>
             <Button onClick={()=> setOpen(true)} className="bg-[#ff3b30] text-white hover:bg-[#ff3b30]/90 rounded-full h-9 sm:h-10 px-3 sm:px-5 font-[family-name:var(--font-grotesk)] lowercase text-sm font-medium shadow-[0_12px_32px_rgba(255,59,48,0.4)] shrink-0 active:scale-95"><span className="sm:hidden">+ pin</span><span className="hidden sm:inline-flex items-center gap-1">pin your memory <PlusSignIcon size={14}/></span></Button>
           </div>
         </div>
@@ -505,7 +519,7 @@ export default function ShrineFable(){
                 <>
                   <p className="font-[family-name:var(--font-serif)] text-[18px] sm:text-[20px] leading-7 lowercase">“{selected.line}”</p>
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide text-white/40">
-                    <span>{new Date(selected.createdAt).toLocaleDateString()}</span><span>•</span><span>{personMems.length} by @{selected.handle}</span><span>•</span><button onClick={()=> { setTraceHandle(selected.handle); setSelected(null); }} className="text-white hover:underline underline-offset-2">trace all →</button>
+                    <span>{new Date(selected.createdAt).toLocaleDateString()}</span><span>•</span><span>{personMems.length} by @{selected.handle}</span><span>•</span><button onClick={()=> { setTraceHandle(selected.handle); setSelected(null); }} className="text-white hover:underline underline-offset-2">trace all →</button><span>•</span><button onClick={shuffleToRandom} className="text-white hover:underline underline-offset-2">shuffle →</button>
                   </div>
                   <div className="mt-2.5 flex items-center gap-2.5">
                     <button onClick={toggleFelt} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase border transition active:scale-95 ${felt[selected.id]?"bg-[#ff3b30]/15 border-[#ff3b30]/30 text-[#ff3b30]":"bg-white/[0.06] border-white/10 text-white/70 hover:text-white"}`}><FavouriteIcon size={13}/> {felt[selected.id]?"felt ✓":"i felt this"}{feltCount>0 && <span className="opacity-70">• {feltCount}</span>}</button>
