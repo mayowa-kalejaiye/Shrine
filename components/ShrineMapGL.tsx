@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Location01Icon } from "hugeicons-react";
@@ -369,6 +369,21 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
         } as any,
         cluster:true, clusterMaxZoom:14, clusterRadius:50
       } as any);
+      // human-figure marker sprite — drawn once, white figure / red ring
+      if(!map.hasImage("person")){
+        const c = document.createElement("canvas"); c.width = 44; c.height = 44;
+        const g = c.getContext("2d")!;
+        g.beginPath(); g.arc(22, 13, 7.5, 0, Math.PI*2);
+        g.fillStyle = "#ffffff"; g.fill();
+        g.lineWidth = 3; g.strokeStyle = "#ff3b30"; g.stroke();
+        g.beginPath();
+        g.moveTo(22, 22);
+        g.arc(22, 22, 11, Math.PI, 0);
+        g.lineTo(33, 40); g.lineTo(11, 40); g.closePath();
+        g.fillStyle = "#ffffff"; g.fill();
+        g.lineWidth = 3; g.strokeStyle = "#ff3b30"; g.stroke();
+        map.addImage("person", { width: 44, height: 44, data: g.getImageData(0, 0, 44, 44).data } as any);
+      }
       map.addLayer({
         id:"clusters-halo",
         type:"circle",
@@ -410,13 +425,14 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       } as any);
       map.addLayer({
         id:"unclustered-point",
-        type:"circle",
+        type:"symbol",
         source:"shrines",
         filter:["!",["has","point_count"]],
-        paint:{
-          "circle-color":"#ff3b30",
-          "circle-radius":6.5,
-          "circle-stroke-width":2, "circle-stroke-color":"#ffffff",
+        layout:{
+          "icon-image":"person",
+          "icon-size":["interpolate",["linear"],["zoom"],2,0.55,10,0.8,16,1],
+          "icon-allow-overlap":true,
+          "icon-ignore-placement":true
         }
       } as any);
       // selected halo — pleasing ring around open memory
@@ -477,12 +493,23 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     else map.once("load", addMarkers);
   },[shrines]);
 
-  const locateMe = ()=>{
+  const [locModal, setLocModal] = useState<null | { blocked: boolean }>(null);
+  const isIOS = ()=> /iPad|iPhone|iPod/.test(navigator.userAgent) || ((navigator as any).platform==="MacIntel" && navigator.maxTouchPoints>1);
+  const doLocate = ()=>{
     const map = mapRef.current; if(!map) return;
-    if(!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(pos=>{
+      setLocModal(null);
       map.flyTo({center:[pos.coords.longitude, pos.coords.latitude], zoom:14, pitch:60, duration:1800, essential:true});
-    }, ()=>{}, { timeout:8000 });
+    }, (err)=> {
+      // iPhones silently block until allowed in settings — coach instead of failing quiet
+      if(err.code===1 || isIOS()) setLocModal({ blocked: true });
+    }, { timeout:9000, enableHighAccuracy:true });
+  };
+  const locateMe = ()=>{
+    if(!navigator.geolocation) return;
+    // iPhone: explain first, then trigger the permission prompt from the tap
+    if(isIOS()) setLocModal({ blocked: false });
+    else doLocate();
   };
   const resetView = ()=>{
     const map = mapRef.current; if(!map) return;
@@ -497,8 +524,28 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       {/* right-middle controls — ride the drawer edge when memory open */}
       <div className={`absolute top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2 transition-all duration-300 ${selectedId ? "right-3 sm:right-[444px]" : "right-3 sm:right-6"}`}>
         <button onClick={locateMe} title="locate me" className="w-9 h-9 rounded-full bg-black/70 backdrop-blur-xl border border-white/15 text-white grid place-items-center hover:bg-black/90 active:scale-95"><Location01Icon size={15}/></button>
-        <button onClick={resetView} title="reset world" className="w-9 h-9 rounded-full bg-black/70 backdrop-blur-xl border border-white/15 text-white grid place-items-center hover:bg-black/90 text-[13px] active:scale-95">⟲</button>
+        <button onClick={resetView} title="reset world" className="w-9 h-9 rounded-full bg-black/70 backdrop-blur-xl border border-white/15 text-white grid place-items-center hover:bg-black/90 active:scale-95">⟲</button>
       </div>
+      {/* iPhone location coaching — strict permissions need a human explanation */}
+      {locModal && (
+        <div onClick={()=> setLocModal(null)} className="absolute inset-0 z-20 bg-black/60 backdrop-blur-md grid place-items-center p-6">
+          <div onClick={e=> e.stopPropagation()} className="w-full max-w-[320px] bg-[#141414] border border-white/10 rounded-[20px] p-5 text-white">
+            <div className="w-10 h-10 rounded-xl bg-white text-black grid place-items-center mx-auto"><Location01Icon size={18}/></div>
+            <div className="mt-3 text-center font-[family-name:var(--font-serif)] lowercase text-lg">find me on the map</div>
+            {locModal.blocked ? (
+              <p className="mt-2 text-center font-[family-name:var(--font-grotesk)] text-sm lowercase leading-6 text-white/60">
+                iphone blocked location. open settings → privacy & security → location services → on, then allow safari (or this app) → come back and try again.
+              </p>
+            ) : (
+              <p className="mt-2 text-center font-[family-name:var(--font-grotesk)] text-sm lowercase leading-6 text-white/60">
+                next your iphone will ask for location — tap allow so we can fly you home.
+              </p>
+            )}
+            <button onClick={doLocate} className="mt-4 w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase text-sm font-medium">try locating me</button>
+            <button onClick={()=> setLocModal(null)} className="mt-2 w-full font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40">cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
