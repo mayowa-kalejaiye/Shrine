@@ -6,7 +6,7 @@ import { RESERVED, cleanHandle } from "@/lib/handles";
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-// POST memory pin — 8 pins / 10 min / IP. Photo payloads capped (base64 bloat guard).
+// POST memory pin — 8 pins / 10 min / IP. Photos only (videos are off).
 export async function POST(req: Request) {
   const ip = clientIp(req);
   const rl = rateLimit(`pin:${ip}`, 8, 10 * 60_000);
@@ -30,20 +30,15 @@ export async function POST(req: Request) {
   if (typeof b.lat !== "number" || typeof b.lng !== "number" || Math.abs(b.lat) > 90 || Math.abs(b.lng) > 180)
     return NextResponse.json({ error: "invalid coords" }, { status: 400 });
 
-  // base64 guard: photos ~150kb each, 1 optional video ~8mb — enforced server-side
+  // base64 guard: photos ~150kb each, videos rejected (video pins are off)
   const imgs: string[] = Array.isArray(b.images) ? b.images.slice(0, 3) : [];
   for (const p of imgs) {
-    if (typeof p !== "string") return NextResponse.json({ error: "invalid photo" }, { status: 400 });
-    const isVideo = p.startsWith("data:video/");
-    if (!p.startsWith("data:image/") && !isVideo)
-      return NextResponse.json({ error: "invalid photo" }, { status: 400 });
-    if (p.length > (isVideo ? 12_000_000 : 200_000))
-      return NextResponse.json({ error: "file too big" }, { status: 400 });
+    if (typeof p !== "string" || !p.startsWith("data:image/") || p.length > 200_000)
+      return NextResponse.json({ error: "photos only" }, { status: 400 });
   }
-  if (imgs.filter(p => p.startsWith("data:video/")).length > 1)
-    return NextResponse.json({ error: "one video max" }, { status: 400 });
-  const cover = typeof b.image === "string" ? b.image.slice(0, 200_000) : imgs[0];
-  if (!cover) return NextResponse.json({ error: "photo required" }, { status: 400 });
+  const rawCover = typeof b.image === "string" && b.image ? b.image : imgs[0];
+  if (!rawCover || !rawCover.startsWith("data:image/")) return NextResponse.json({ error: "photo required" }, { status: 400 });
+  const cover = rawCover.slice(0, 200_000);
 
   const sb = createClient(URL, ANON);
   await sb.from("users").upsert({ handle }, { onConflict: "handle" });

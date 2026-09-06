@@ -21,6 +21,9 @@ const ShrineMap = dynamic(()=> import("@/components/ShrineMapGL"), { ssr:false, 
 // pins (friends batch + real pins stay — they live in supabase + localStorage).
 const SEEDS: Shrine[] = process.env.NEXT_PUBLIC_USE_SEED === "false" ? [] : SEED_SHRINES;
 
+// media cap: photos stay small for fast loads (videos are off — picker rejects them)
+const capMedia = (u: string) => u.slice(0, 150000);
+
 export default function ShrineFable(){
   const [shrines, setShrines] = useState<Shrine[]>(SEEDS);
   const [open, setOpen] = useState(false);
@@ -275,7 +278,7 @@ export default function ShrineFable(){
     const s: Shrine = { id: Math.random().toString(36).slice(2), image: cover, images: photos.length? photos : [cover], line: line.toLowerCase(), city: picked.label, lat: picked.lat, lng: picked.lng, handle: clean, createdAt: when };
     // persist via rate-limited API (8 pins / 10 min / IP) — falls back to local-only on failure
     try{
-      const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: cover.slice(0,150000), images: (s.images||[]).map(p=> p.slice(0,150000)) }) });
+      const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: capMedia(cover), images: (s.images||[]).map(capMedia) }) });
       if(res.status===429) toast("pin saved locally — server says slow down", { description: "too many pins in 10 min, sync paused" });
     }catch{}
     // nearby trigger — check within 20km
@@ -760,7 +763,7 @@ export default function ShrineFable(){
                   )
                 ))}
               </div>
-              <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; if(photos.length>=3) return; const isVid = f.type.startsWith("video/"); if(isVid && f.size > 8*1024*1024){ toast("video too big", { description: "8mb max — trim it first" }); (e.target as any).value=""; return; } if(photos.some(p=> p.startsWith("data:video/")) && isVid){ toast("one video max", { description: "photos unlimited (up to 3 slots)" }); (e.target as any).value=""; return; } const r=new FileReader(); r.onload=()=> { const url=String(r.result); setPhotos(p=> [...p, url].slice(0,3)); setImage(url); }; r.readAsDataURL(f); (e.target as any).value=""; }} />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; if(photos.length>=3) return; if(!f.type.startsWith("image/")){ toast("photos only", { description: "video pins are off — pick a photo" }); (e.target as any).value=""; return; } if(f.size > 8*1024*1024){ toast("photo too big", { description: "8mb max — compress it first" }); (e.target as any).value=""; return; } const r=new FileReader(); r.onload=()=> { const url=String(r.result); setPhotos(p=> [...p, url].slice(0,3)); setImage(url); }; r.readAsDataURL(f); (e.target as any).value=""; }} />
             </div>
             <div>
               <div className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-[0.14em] text-white/40 mb-2">one line — why you can’t throw it away</div>
