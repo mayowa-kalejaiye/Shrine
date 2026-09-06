@@ -38,6 +38,7 @@ export default function ShrineFable(){
   const [heroOpen, setHeroOpen] = useState(true);
   const [viewPhoto, setViewPhoto] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [traceHandle, setTraceHandle] = useState<string|null>(null);
   const [userEmail, setUserEmail] = useState<string|null>(null);
   const [magicEmail, setMagicEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
@@ -62,6 +63,29 @@ export default function ShrineFable(){
     setPendingAction(()=> action);
     setHandleModal(true);
   }
+  // surface OAuth / magic-link failures (?auth_error=...) instead of failing silently
+  useEffect(()=>{
+    const err = new URLSearchParams(window.location.search).get("auth_error");
+    if(err){
+      toast("sign-in failed", { description: err.slice(0,180) });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  },[]);
+  // authoritative claim via rate-limited API (checks users + memories, reserves server-side)
+  async function claimHandle(h: string): Promise<boolean>{
+    const clean = h.toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20);
+    if(!clean || RESERVED.includes(clean)) return false;
+    try{
+      const res = await fetch("/api/claim", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean }) });
+      if(res.status===409){ setModalTaken(true); toast(`@${clean} is taken`, { description: "pick another handle" }); return false; }
+      if(res.status===429){ toast("too many claims — try again later"); return false; }
+      if(!res.ok) return false;
+    }catch{
+      // offline: fall back to local-only claim
+    }
+    setHandle(clean); localStorage.setItem("shrine_handle", clean);
+    return true;
+  }
   async function toggleFelt(){
     if(!selected) return;
     const h = myHandle();
@@ -75,12 +99,10 @@ export default function ShrineFable(){
       icon: <span className="w-7 h-7 rounded-full bg-[#ff3b30]/15 border border-[#ff3b30]/30 grid place-items-center shrink-0"><FavouriteIcon size={13}/></span>,
       style: { background:"#141414", border:"1px solid rgba(255,59,48,0.35)", borderRadius:"16px" },
     });
-    if(supabase){
-      try{
-        if(nowFelt) await supabase.from("felt").insert({ memory_id: selected.id, handle: h });
-        else await supabase.from("felt").delete().eq("memory_id", selected.id).eq("handle", h);
-      }catch{}
-    }
+    try{
+      const res = await fetch("/api/felt", { method: nowFelt ? "POST" : "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: selected.id, handle: h }) });
+      if(res.status===429) toast("too many felts — slow down", { description: "felt saved locally, sync paused" });
+    }catch{}
   }
   useEffect(()=>{
     setViewPhoto(false); setShareOpen(false); setEditing(false); setPhotoIdx(0); setShowComments(false); setCommentInput("");
@@ -201,9 +223,13 @@ export default function ShrineFable(){
     if(RESERVED.includes(clean)){ setHandleTaken(true); return; }
     if(!supabase){ setHandleTaken(shrines.some(s=> s.handle===clean && clean!=="you")); return; }
     try{
-      const { data } = await supabase.from("memories").select("id").eq("handle", clean).limit(1);
+      // check BOTH tables — memories (pins) AND users (claims with no pins yet)
+      const [{ data: mem }, { data: usr }] = await Promise.all([
+        supabase.from("memories").select("id").eq("handle", clean).limit(1),
+        supabase.from("users").select("id").eq("handle", clean).limit(1),
+      ]);
       const takenLocal = shrines.some(s=> s.handle===clean && clean!==handle);
-      setHandleTaken(!!(data && data.length) || takenLocal);
+      setHandleTaken(!!(mem && mem.length) || !!(usr && usr.length) || takenLocal);
     }catch{ setHandleTaken(false); }
   }
   async function pin(){
@@ -215,8 +241,11 @@ export default function ShrineFable(){
     const when = memDate ? new Date(memDate + "T12:00:00").getTime() : Date.now();
     const cover = photos[0] || image;
     const s: Shrine = { id: Math.random().toString(36).slice(2), image: cover, images: photos.length? photos : [cover], line: line.toLowerCase(), city: picked.label, lat: picked.lat, lng: picked.lng, handle: clean, createdAt: when };
-    // supabase persist — no memory limit, traffic mode
-    if(supabase){ try{ await supabase.from("users").upsert({ handle: clean }, { onConflict:"handle" }); await supabase.from("memories").insert({ handle:clean, city:s.city, lat:s.lat, lng:s.lng, line:s.line, image:s.image.slice(0,150000), images: s.images?.map(p=> p.slice(0,150000)) }); }catch{} }
+    // persist via rate-limited API (8 pins / 10 min / IP) — falls back to local-only on failure
+    try{
+      const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: cover.slice(0,150000), images: (s.images||[]).map(p=> p.slice(0,150000)) }) });
+      if(res.status===429) toast("pin saved locally — server says slow down", { description: "too many pins in 10 min, sync paused" });
+    }catch{}
     // nearby trigger — check within 20km
     const nearby = shrines.filter(x=> haversine({lat:picked.lat,lng:picked.lng},{lat:x.lat,lng:x.lng})<20);
     if(nearby.length) toast(`nearby • ${nearby[0].city} • ${nearby.length} memories within 20km`, { description: `"${nearby[0].line.slice(0,48)}..." — someone felt close by` , duration: 5000});
@@ -234,8 +263,12 @@ export default function ShrineFable(){
     const c: ShrineComment = { id: Math.random().toString(36).slice(2), memory_id: selected.id, handle: clean, text: commentInput.trim().slice(0,280), createdAt: Date.now() };
     setComments(prev=> [c, ...prev]);
     setCommentInput("");
-    if(supabase){ try{ await supabase.from("comments").insert({ memory_id: c.memory_id, handle: c.handle, text: c.text }); }catch{} }
-    else { try{ const k="shrine_comments"; const all=JSON.parse(localStorage.getItem(k)||"[]"); localStorage.setItem(k, JSON.stringify([c, ...all].slice(0,500))); }catch{} }
+    try{
+      const res = await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: c.memory_id, handle: c.handle, text: c.text }) });
+      if(res.status===429) toast("comment saved locally — server says slow down", { description: "too many comments, sync paused" });
+    }catch{
+      try{ const k="shrine_comments"; const all=JSON.parse(localStorage.getItem(k)||"[]"); localStorage.setItem(k, JSON.stringify([c, ...all].slice(0,500))); }catch{}
+    }
   }
   function saveEdit(){
     if(!selected || !editLine.trim()) return;
@@ -294,7 +327,14 @@ export default function ShrineFable(){
       {/* FULLSCREEN MAP — true fullscreen, nav floats on map */}
       <section className="relative h-[100dvh] w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
-          <ShrineMap shrines={shrines} selectedId={selected?.id || null} onHover={()=>{}} onSelect={setSelected} onPick={(lat,lng)=> { setPicked({lat,lng,label:`${lat.toFixed(3)}, ${lng.toFixed(3)}`}); }} />
+          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} onHover={()=>{}} onSelect={setSelected} onPick={(lat,lng)=> { setPicked({lat,lng,label:`${lat.toFixed(3)}, ${lng.toFixed(3)}`}); }} />
+        {/* trace banner — everywhere they've been */}
+        {traceHandle && (
+          <div className="absolute top-[64px] sm:top-[72px] left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-black/70 backdrop-blur-xl border border-white/15 rounded-full pl-4 pr-2 py-1.5 pointer-events-auto">
+            <span className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide">tracing @{traceHandle} • {shrines.filter(s=> s.handle===traceHandle).length} places</span>
+            <button onClick={()=> setTraceHandle(null)} className="w-7 h-7 rounded-full bg-white text-black grid place-items-center text-xs hover:bg-white/90">✕</button>
+          </div>
+        )}
         </div>
         {/* floating nav — shrine + your timeline + pin */}
         <div className="absolute top-3 sm:top-4 left-3 right-3 sm:left-6 sm:right-6 z-20 flex items-center justify-between gap-2 pointer-events-none">
@@ -354,7 +394,7 @@ export default function ShrineFable(){
                         <div key={s.id} className="relative flex gap-4">
                           <div className="w-8 h-8 rounded-full bg-white text-black grid place-items-center font-bold text-xs shrink-0 mt-1 z-10">{i+1}</div>
                           <Card className="flex-1 bg-[#0f0f0f]/80 backdrop-blur border-white/10 rounded-2xl overflow-hidden">
-                            <img src={s.image} className="w-full h-[200px] object-cover" alt=""/>
+                            {s.image.startsWith("data:video/") ? <video src={s.image} className="w-full h-[200px] object-cover" muted playsInline preload="metadata" /> : <img src={s.image} className="w-full h-[200px] object-cover" alt=""/>}
                             <div className="p-4">
                               <Badge className="bg-white text-black rounded-full font-[family-name:var(--font-grotesk)] lowercase text-xs">{s.city} • {s.lat.toFixed(2)}, {s.lng.toFixed(2)}</Badge>
                               <p className="mt-2 font-[family-name:var(--font-serif)] lowercase">“{s.line}”</p>
@@ -416,7 +456,11 @@ export default function ShrineFable(){
               <div className="flex overflow-x-auto snap-x snap-mandatory" style={{scrollbarWidth:"none", WebkitOverflowScrolling:"touch" as any}} onScroll={e=> { const el=e.currentTarget; const i=Math.round(el.scrollLeft/el.clientWidth); if(i!==photoIdx) setPhotoIdx(i); }}>
                 {(selected.images && selected.images.length ? selected.images : [selected.image]).slice(0,3).map((src,i)=>(
                   <button key={i} onClick={()=> { setPhotoIdx(i); setViewPhoto(true); }} className="shrink-0 w-full snap-center block">
-                    <img src={src} className="w-full h-[190px] sm:h-[220px] object-cover" alt=""/>
+                    {src.startsWith("data:video/") ? (
+                      <video src={src} className="w-full h-[190px] sm:h-[220px] object-cover" muted playsInline preload="metadata" />
+                    ) : (
+                      <img src={src} className="w-full h-[190px] sm:h-[220px] object-cover" alt=""/>
+                    )}
                   </button>
                 ))}
               </div>
@@ -442,7 +486,7 @@ export default function ShrineFable(){
                 <>
                   <p className="font-[family-name:var(--font-serif)] text-[18px] sm:text-[20px] leading-7 lowercase">“{selected.line}”</p>
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide text-white/40">
-                    <span>{new Date(selected.createdAt).toLocaleDateString()}</span><span>•</span><span>{personMems.length} by @{selected.handle}</span>
+                    <span>{new Date(selected.createdAt).toLocaleDateString()}</span><span>•</span><span>{personMems.length} by @{selected.handle}</span><span>•</span><button onClick={()=> { setTraceHandle(selected.handle); setSelected(null); }} className="text-white hover:underline underline-offset-2">trace all →</button>
                   </div>
                   <div className="mt-2.5 flex items-center gap-2.5">
                     <button onClick={toggleFelt} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase border transition active:scale-95 ${felt[selected.id]?"bg-[#ff3b30]/15 border-[#ff3b30]/30 text-[#ff3b30]":"bg-white/[0.06] border-white/10 text-white/70 hover:text-white"}`}><FavouriteIcon size={13}/> {felt[selected.id]?"felt ✓":"i felt this"}{feltCount>0 && <span className="opacity-70">• {feltCount}</span>}</button>
@@ -492,7 +536,7 @@ export default function ShrineFable(){
                 <div className="mt-2.5 flex gap-2.5 overflow-x-auto pb-1 -mx-4 px-4 sm:-mx-5 sm:px-5" style={{scrollSnapType:"x mandatory", WebkitOverflowScrolling:"touch" as any}}>
                   {closeBy.map(s=>(
                     <button key={s.id} onClick={()=> setSelected(s)} className="shrink-0 w-[148px] rounded-2xl overflow-hidden bg-white/[0.04] border border-white/5 hover:border-white/15 text-left transition active:scale-[0.98]" style={{scrollSnapAlign:"start"}}>
-                      <img src={s.image} loading="lazy" className="w-full h-[88px] object-cover" alt=""/>
+                      {s.image.startsWith("data:video/") ? <video src={s.image} className="w-full h-[88px] object-cover" muted playsInline preload="metadata" /> : <img src={s.image} loading="lazy" className="w-full h-[88px] object-cover" alt=""/>}
                       <div className="p-2">
                         <div className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase text-white/40 truncate">{s.city} • {Math.round(Math.hypot(s.lat-selected.lat, s.lng-selected.lng)*111)}km</div>
                         <div className="font-[family-name:var(--font-serif)] text-xs leading-4 lowercase line-clamp-2 mt-0.5">“{s.line.slice(0,42)}…”</div>
@@ -511,7 +555,11 @@ export default function ShrineFable(){
         {/* photo viewer — tap picture to see it big, blurred bg */}
         {selected && viewPhoto && (
           <div onClick={()=> setViewPhoto(false)} className="absolute inset-0 z-30 bg-black/70 backdrop-blur-xl grid place-items-center p-6">
-            <img src={(selected.images && selected.images[photoIdx]) || selected.image} onClick={e=> e.stopPropagation()} className="max-h-[76vh] max-w-full rounded-2xl object-contain shadow-[0_32px_80px_rgba(0,0,0,0.7)]" alt=""/>
+            {((selected.images && selected.images[photoIdx]) || selected.image).startsWith("data:video/") ? (
+              <video src={(selected.images && selected.images[photoIdx]) || selected.image} controls playsInline onClick={e=> e.stopPropagation()} className="max-h-[76vh] max-w-full rounded-2xl shadow-[0_32px_80px_rgba(0,0,0,0.7)]" />
+            ) : (
+              <img src={(selected.images && selected.images[photoIdx]) || selected.image} onClick={e=> e.stopPropagation()} className="max-h-[76vh] max-w-full rounded-2xl object-contain shadow-[0_32px_80px_rgba(0,0,0,0.7)]" alt=""/>
+            )}
             <span className="absolute bottom-8 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide text-white/50">tap anywhere to return</span>
           </div>
         )}
@@ -586,7 +634,7 @@ export default function ShrineFable(){
           {shrines.slice(0,200).map((s,i)=>(
             <Card key={s.id} className="bg-white/[0.04] border-white/10 rounded-2xl overflow-hidden group hover:bg-white/[0.06] hover:border-white/15 transition">
               <div className="relative h-[170px] overflow-hidden bg-black">
-                <img src={s.image} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-500" alt=""/>
+                {s.image.startsWith("data:video/") ? <video src={s.image} className="w-full h-full object-cover" muted playsInline preload="metadata" /> : <img src={s.image} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-500" alt=""/>}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                 <Badge className="absolute top-2 left-2 bg-black/60 backdrop-blur border-white/15 text-white rounded-full font-[family-name:var(--font-grotesk)] lowercase text-[11px]">#{String(i+1).padStart(2,"0")} • {s.city}</Badge>
                 <button aria-label="share" onClick={()=> share(s)} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white text-black grid place-items-center hover:bg-white/90 active:scale-95"><Download01Icon size={12}/></button>
@@ -643,7 +691,11 @@ export default function ShrineFable(){
                 {[0,1,2].map(i=>(
                   photos[i] ? (
                     <div key={i} className="relative h-[110px] rounded-2xl overflow-hidden border border-white/15">
-                      <img src={photos[i]} className="w-full h-full object-cover" alt=""/>
+                      {photos[i].startsWith("data:video/") ? (
+                        <video src={photos[i]} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                      ) : (
+                        <img src={photos[i]} className="w-full h-full object-cover" alt=""/>
+                      )}
                       {i===0 && <span className="absolute bottom-1.5 left-1.5 font-[family-name:var(--font-grotesk)] text-[10px] lowercase bg-black/60 backdrop-blur px-2 py-0.5 rounded-full">cover</span>}
                       <button type="button" onClick={()=> { setPhotos(photos.filter((_,j)=> j!==i)); setImage(""); }} className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 backdrop-blur grid place-items-center text-xs">✕</button>
                     </div>
@@ -654,7 +706,7 @@ export default function ShrineFable(){
                   )
                 ))}
               </div>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; if(photos.length>=3) return; const r=new FileReader(); r.onload=()=> { const url=String(r.result); setPhotos(p=> [...p, url].slice(0,3)); setImage(url); }; r.readAsDataURL(f); (e.target as any).value=""; }} />
+              <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; if(photos.length>=3) return; const isVid = f.type.startsWith("video/"); if(isVid && f.size > 8*1024*1024){ toast("video too big", { description: "8mb max — trim it first" }); (e.target as any).value=""; return; } if(photos.some(p=> p.startsWith("data:video/")) && isVid){ toast("one video max", { description: "photos unlimited (up to 3 slots)" }); (e.target as any).value=""; return; } const r=new FileReader(); r.onload=()=> { const url=String(r.result); setPhotos(p=> [...p, url].slice(0,3)); setImage(url); }; r.readAsDataURL(f); (e.target as any).value=""; }} />
             </div>
             <div>
               <div className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-[0.14em] text-white/40 mb-2">one line — why you can’t throw it away</div>
@@ -722,12 +774,12 @@ export default function ShrineFable(){
             <p className="font-[family-name:var(--font-grotesk)] text-sm lowercase text-white/50 mt-1">you need a name before you join in — no @you, @me scums allowed.</p>
             <div className="mt-4 relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 font-[family-name:var(--font-grotesk)]">@</span>
-              <Input value={modalHandle} onChange={e=> { const v=e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20); setModalHandle(v); (async ()=>{ if(!v){ setModalTaken(false); return; } if(RESERVED.includes(v)){ setModalTaken(true); return; } if(supabase){ try{ const { data } = await supabase.from("memories").select("id").eq("handle", v).limit(1); setModalTaken(!!(data && data.length)); return; }catch{} } setModalTaken(shrines.some(s=> s.handle===v)); })(); }} onKeyDown={e=> { if(e.key==="Enter" && modalHandle && !modalTaken){ (async ()=>{ if(supabase){ try{ await supabase.from("users").upsert({ handle: modalHandle }, { onConflict:"handle" }); }catch{} } setHandle(modalHandle); localStorage.setItem("shrine_handle", modalHandle); setHandleModal(false); pendingAction?.(); setPendingAction(null); })(); } }} placeholder="mayowa" className="bg-black/40 border-white/10 rounded-xl font-[family-name:var(--font-grotesk)] lowercase h-11 pl-8" maxLength={20}/>
+              <Input value={modalHandle} onChange={e=> { const v=e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20); setModalHandle(v); (async ()=>{ if(!v){ setModalTaken(false); return; } if(RESERVED.includes(v)){ setModalTaken(true); return; } if(supabase){ try{ const [{ data: mem }, { data: usr }] = await Promise.all([supabase.from("memories").select("id").eq("handle", v).limit(1), supabase.from("users").select("id").eq("handle", v).limit(1)]); setModalTaken(!!(mem && mem.length) || !!(usr && usr.length)); return; }catch{} } setModalTaken(shrines.some(s=> s.handle===v)); })(); }} onKeyDown={e=> { if(e.key==="Enter" && modalHandle && !modalTaken){ (async ()=>{ if(await claimHandle(modalHandle)){ setHandleModal(false); pendingAction?.(); setPendingAction(null); } })(); } }} placeholder="mayowa" className="bg-black/40 border-white/10 rounded-xl font-[family-name:var(--font-grotesk)] lowercase h-11 pl-8" maxLength={20}/>
             </div>
             {modalTaken
               ? <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-[#ff3b30]">@{modalHandle} is taken or reserved</p>
               : modalHandle ? <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-emerald-400">@{modalHandle} is free</p> : null}
-            <Button disabled={!modalHandle || modalTaken} onClick={()=> { (async ()=>{ if(supabase){ try{ await supabase.from("users").upsert({ handle: modalHandle }, { onConflict:"handle" }); }catch{} } setHandle(modalHandle); localStorage.setItem("shrine_handle", modalHandle); setHandleModal(false); pendingAction?.(); setPendingAction(null); })(); }} className="mt-4 w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">claim @{modalHandle || "..."}</Button>
+            <Button disabled={!modalHandle || modalTaken} onClick={()=> { (async ()=>{ if(await claimHandle(modalHandle)){ setHandleModal(false); pendingAction?.(); setPendingAction(null); } })(); }} className="mt-4 w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">claim @{modalHandle || "..."}</Button>
             <div className="mt-4 flex items-center gap-3">
               <span className="flex-1 h-px bg-white/10" />
               <span className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase tracking-[0.14em] text-white/30">lock it to you</span>

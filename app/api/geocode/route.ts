@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 
 // Proxy for Nominatim (OSM usage policy requires a User-Agent — browsers can't set one, so we do it server-side)
 const HEADERS = {
@@ -10,6 +11,16 @@ const HEADERS = {
 const cache = new Map<string, { at: number; data: any }>();
 
 export async function GET(req: NextRequest) {
+  // 40 geocode lookups / min / IP — search-as-you-type is debounced client-side,
+  // this stops a script from hammering Nominatim through us (their usage policy bans us otherwise).
+  const ip = clientIp(req);
+  const rl = rateLimit(`geocode:${ip}`, 40, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "geocoder rate limited — slow down" },
+      { status: 429, headers: rateLimitHeaders(rl.remaining, 40, rl.resetMs) }
+    );
+  }
   const q = req.nextUrl.searchParams.get("q") || "";
   const lat = req.nextUrl.searchParams.get("lat") || "";
   const lon = req.nextUrl.searchParams.get("lon") || "";
