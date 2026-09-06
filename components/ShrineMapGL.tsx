@@ -43,7 +43,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       if(target) return;
       onPickRef.current?.(e.lngLat.lat, e.lngLat.lng);
     });
-    // idle twirl — after 7s true idleness, world view only, never while reading
+    // idle twirl — after 2.5s true idleness, world view only, never while reading
     let userInteracting = false;
     let spinPaused = true;
     let resumeTimer: any = null;
@@ -51,7 +51,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     const resumeSpin = ()=> {
       userInteracting = false;
       if(resumeTimer) clearTimeout(resumeTimer);
-      resumeTimer = setTimeout(()=> { spinPaused = false; }, 7000);
+      resumeTimer = setTimeout(()=> { spinPaused = false; }, 2500);
     };
     map.on("mousedown", pauseSpin);
     map.on("dragstart", pauseSpin);
@@ -61,7 +61,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     map.on("moveend", resumeSpin);
     map.on("mouseup", resumeSpin);
     map.on("touchend", resumeSpin);
-    resumeTimer = setTimeout(()=> { spinPaused = false; }, 7000);
+    resumeTimer = setTimeout(()=> { spinPaused = false; }, 2500);
     const spin = setInterval(()=>{
       const sel = (map as any)._selectedId;
       if(spinPaused || userInteracting || sel || traceRef.current) return;
