@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif, Instrument_Sans } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import FaviconSpin from "@/components/FaviconSpin";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -63,6 +64,7 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} ${instrumentSans.variable} antialiased bg-[#0a0a0b] text-white selection:bg-[#ff3b30]/30`}>
         {children}
+        <FaviconSpin />
         <Analytics />
       </body>
     </html>
