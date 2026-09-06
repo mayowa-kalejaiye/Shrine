@@ -33,6 +33,20 @@ const instrumentSans = Instrument_Sans({
 export const metadata: Metadata = {
   title: "SHRINE — a world map of memories",
   description: "Pin a memory where it happened. One photo, one line, one coordinate. A world museum of memories.",
+  openGraph: {
+    title: "SHRINE — a world map of memories",
+    description: "Where did this memory happen? Pin it on a real globe. 500+ memories, every continent.",
+    url: "https://shrine-map.vercel.app",
+    siteName: "SHRINE",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "SHRINE — world map of memories" }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SHRINE — a world map of memories",
+    description: "Where did this memory happen? Pin it on a real globe.",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({

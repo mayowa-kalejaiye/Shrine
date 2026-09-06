@@ -43,15 +43,15 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       if(target) return;
       onPickRef.current?.(e.lngLat.lat, e.lngLat.lng);
     });
-    // idle twirl — only after TRUE idleness (12s), world view only, never while reading
+    // idle twirl — after 7s true idleness, world view only, never while reading
     let userInteracting = false;
-    let spinPaused = true; // start paused — only spin after proven idleness
+    let spinPaused = true;
     let resumeTimer: any = null;
     const pauseSpin = ()=> { userInteracting = true; spinPaused = true; if(resumeTimer) clearTimeout(resumeTimer); };
     const resumeSpin = ()=> {
       userInteracting = false;
       if(resumeTimer) clearTimeout(resumeTimer);
-      resumeTimer = setTimeout(()=> { spinPaused = false; }, 12000);
+      resumeTimer = setTimeout(()=> { spinPaused = false; }, 7000);
     };
     map.on("mousedown", pauseSpin);
     map.on("dragstart", pauseSpin);
@@ -61,15 +61,14 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     map.on("moveend", resumeSpin);
     map.on("mouseup", resumeSpin);
     map.on("touchend", resumeSpin);
-    // initial grace — don't spin for first 12s after load
-    resumeTimer = setTimeout(()=> { spinPaused = false; }, 12000);
+    resumeTimer = setTimeout(()=> { spinPaused = false; }, 7000);
     const spin = setInterval(()=>{
       const sel = (map as any)._selectedId;
       if(spinPaused || userInteracting || sel) return;
+      if(document.hidden) return;
       if(map.isMoving() || map.isZooming() || map.isRotating()) return;
       if(map.getZoom() > 4) return; // world globe only — never while exploring streets
-      const b = map.getBearing();
-      map.setBearing(b + 0.05);
+      map.setBearing(map.getBearing() + 0.09);
     }, 40);
     (map as any)._spinInt = spin;
 
