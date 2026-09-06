@@ -749,7 +749,7 @@ export default function ShrineFable(){
                 ) : (
                   <div className="flex gap-2">
                     <Input value={magicEmail} onChange={e=> setMagicEmail(e.target.value)} onKeyDown={e=> { if(e.key==="Enter" && magicEmail.includes("@")){ createBrowser().auth.signInWithOtp({ email: magicEmail, options:{ emailRedirectTo: `${window.location.origin}/auth/callback` } }).then(()=> setMagicSent(true)); } }} type="email" placeholder="you@email.com" className="flex-1 bg-black/40 border-white/10 rounded-xl font-[family-name:var(--font-grotesk)] lowercase h-11" />
-                    <Button disabled={!magicEmail.includes("@")} onClick={()=> { createBrowser().auth.signInWithOtp({ email: magicEmail, options:{ emailRedirectTo: `${window.location.origin}/auth/callback` } }).then(()=> setMagicSent(true)); }} className="rounded-xl bg-white/10 border border-white/10 hover:bg-white/15 h-11 px-4 font-[family-name:var(--font-grotesk)] lowercase text-xs shrink-0 disabled:opacity-40">magic link</Button>
+                    <Button disabled={!magicEmail.includes("@")} onClick={()=> { createBrowser().auth.signInWithOtp({ email: magicEmail, options:{ emailRedirectTo: `${window.location.origin}/auth/callback` } }).then(()=> setMagicSent(true)); }} className="rounded-xl bg-white text-black hover:bg-white/90 h-11 px-4 font-[family-name:var(--font-grotesk)] lowercase text-xs font-medium shrink-0 disabled:opacity-40">magic link</Button>
                   </div>
                 )}
               </div>
