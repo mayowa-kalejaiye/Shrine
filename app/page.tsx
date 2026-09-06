@@ -167,8 +167,9 @@ export default function ShrineFable(){
       }catch{ setCityResults([]); }
     }, 350);
   }
-  function useCurrentLocation(){
-    if(!navigator.geolocation) return alert("geolocation not supported");
+  const [pinLocModal, setPinLocModal] = useState<null | { blocked: boolean }>(null);
+  const isIOS = ()=> typeof navigator!=="undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || ((navigator as any).platform==="MacIntel" && navigator.maxTouchPoints>1));
+  function requestPinLocation(){
     setLocating(true);
     navigator.geolocation.getCurrentPosition(async (pos)=>{
       const {latitude, longitude} = pos.coords;
@@ -179,7 +180,14 @@ export default function ShrineFable(){
         setPicked({lat: latitude, lng: longitude, label});
       }catch{ setPicked({lat: latitude, lng: longitude, label: "current location"}); }
       setLocating(false);
-    }, ()=>{ setLocating(false); alert("couldn't get location — allow permission or search"); }, { enableHighAccuracy:true, timeout:8000 });
+      setPinLocModal(null);
+    }, (err)=>{ setLocating(false); if(err.code===1 || isIOS()) setPinLocModal({ blocked: true }); else alert("couldn't get location — allow permission or search above"); }, { enableHighAccuracy:true, timeout:9000 });
+  }
+  function useCurrentLocation(){
+    if(!navigator.geolocation) return alert("geolocation not supported");
+    // iphones block silently until allowed — explain first, then ask from the tap
+    if(isIOS()) setPinLocModal({ blocked: false });
+    else requestPinLocation();
   }
   function haversine(a:{lat:number,lng:number}, b:{lat:number,lng:number}){
     const R=6371; const dLat=(b.lat-a.lat)*Math.PI/180; const dLng=(b.lng-a.lng)*Math.PI/180;
@@ -680,7 +688,25 @@ export default function ShrineFable(){
                 </Button>
               </div>
               {picked && <div className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 px-3 py-2 rounded-xl flex items-center gap-2"><MapPinIcon size={12}/> picked: {picked.label} • {picked.lat.toFixed(4)}, {picked.lng.toFixed(4)}</div>}
-              {!picked && <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/25">tip: tap anywhere on the dark map to pin exactly at street level.</p>}
+              {!picked && <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/25">tip: search above, use current, or tap the map to pin at street level.</p>}
+              {pinLocModal && (
+                <div className="mt-2 rounded-2xl bg-[#1a1a1a] border border-white/10 p-4">
+                  <div className="font-[family-name:var(--font-serif)] lowercase text-[15px]">find me for this pin</div>
+                  {pinLocModal.blocked ? (
+                    <p className="mt-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase leading-5 text-white/60">
+                      iphone blocked location. open settings → privacy & security → location services → on, allow safari → come back and retry. or just search above — same result.
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase leading-5 text-white/60">
+                      your iphone will ask for location next — tap allow. or skip and search above.
+                    </p>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <Button onClick={requestPinLocation} disabled={locating} className="flex-1 bg-white text-black hover:bg-white/90 rounded-full h-9 font-[family-name:var(--font-grotesk)] lowercase text-xs disabled:opacity-50">{locating ? "locating..." : "try locating me"}</Button>
+                    <Button onClick={()=> setPinLocModal(null)} variant="outline" className="flex-1 rounded-full border-white/15 font-[family-name:var(--font-grotesk)] lowercase text-xs h-9">search instead</Button>
+                  </div>
+                </div>
+              )}
             </div>
             <Button onClick={pin} disabled={(photos.length===0 && !image) || !line.trim() || !picked} className="w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">pin to world map <MapPinIcon size={16}/></Button>
             <p className="text-center font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/25">free forever • unlimited pins • {picked? `pinned at ${picked.lat.toFixed(2)}, ${picked.lng.toFixed(2)}` : "pick anywhere on earth"}</p>
