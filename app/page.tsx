@@ -546,7 +546,7 @@ export default function ShrineFable(){
         <div className="mx-4 mt-4 rounded-2xl bg-white/[0.04] border border-white/10 p-4">
           <div className="flex items-center justify-between">
             <span className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-[0.14em] text-white/40">your coverage</span>
-            <Link href="/you" className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white hover:underline">view timeline →</Link>
+            <button onClick={()=> { document.getElementById("collection-drawer")?.classList.add("-translate-x-full"); setShowTimeline(true); }} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white hover:underline">view timeline →</button>
           </div>
           <div className="mt-3 space-y-3">
             <div>
