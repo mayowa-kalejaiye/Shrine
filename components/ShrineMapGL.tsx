@@ -7,7 +7,8 @@ import { Shrine, CITIES } from "@/lib/shrine-data";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, selectedId }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null }){
+export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, selectedId, traceHandle }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null }){
+  const traceRef = useRef(traceHandle); useEffect(()=>{ traceRef.current = traceHandle; },[traceHandle]);
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map|null>(null);
   const onPickRef = useRef(onPick); const onSelectRef = useRef(onSelect); const onHoverRef = useRef(onHover);
@@ -215,13 +216,15 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       // terrain removed — mapbox-dem maxes at z14 and throws "zoom not supported" at street 19.5
       try{ map.setTerrain(null as any); }catch{}
 
-      // CONNECTIONS — only selected person's chain + yours, subtle, so it never clashes
+      // CONNECTIONS — traced person > selected person > yours, so it never clashes
       const drawConnections = ()=>{
-        let focusHandle: string|null = null;
-        try{
-          const sel = (map as any)._selectedId as string|null;
-          if(sel){ const f = shrines.find(x=> x.id===sel); if(f) focusHandle = f.handle; }
-        }catch{}
+        let focusHandle: string|null = traceRef.current || null;
+        if(!focusHandle){
+          try{
+            const sel = (map as any)._selectedId as string|null;
+            if(sel){ const f = shrines.find(x=> x.id===sel); if(f) focusHandle = f.handle; }
+          }catch{}
+        }
         let myHandle = "you";
         try{ myHandle = localStorage.getItem("shrine_handle") || "you"; }catch{}
         const allowed = new Set<string>();
@@ -319,6 +322,20 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
 
     return ()=> { const a=(map as any)._cloudAnim; if(a) clearInterval(a); const b=(map as any)._lightInt; if(b) clearInterval(b); const d=(map as any)._dashAnim; if(d) clearInterval(d); map.remove(); mapRef.current=null; };
   },[]);
+
+  // trace mode — fit everywhere one handle has been
+  useEffect(()=>{
+    const map = mapRef.current;
+    if(!map || !traceHandle) return;
+    const pins = shrines.filter(s=> s.handle===traceHandle);
+    if(!pins.length) return;
+    (map as any)._drawConnections?.();
+    try{
+      const b = new (mapboxgl as any).LngLatBounds();
+      pins.forEach(p=> b.extend([p.lng, p.lat]));
+      map.fitBounds(b, { padding: { top: 90, bottom: 200, left: 60, right: 60 }, maxZoom: 11, duration: 2000 });
+    }catch{}
+  },[traceHandle, shrines]);
 
   // fly to selected from feed drawer, zoom out when closed + track for spin pause + halo
   const prevSelectedRef = useRef<string|null>(null);
