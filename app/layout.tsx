@@ -56,6 +56,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://api.mapbox.com" crossOrigin="" />
+        <link rel="preconnect" href="https://events.mapbox.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://tilecache.rainviewer.com" />
+      </head>
       <body suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} ${instrumentSans.variable} antialiased bg-[#0a0a0b] text-white selection:bg-[#ff3b30]/30`}>
         {children}
         <Analytics />

@@ -2,7 +2,6 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import * as THREE from "three";
 import { Location01Icon } from "hugeicons-react";
 import { Shrine, CITIES } from "@/lib/shrine-data";
 
@@ -161,8 +160,8 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
         map.addSource("night-shade", { type:"geojson", data:{ type:"FeatureCollection", features:[] } } as any);
         map.addLayer({ id:"night-shade", type:"fill", source:"night-shade", paint:{ "fill-color":"#0a0a1a", "fill-opacity": 0.22 } } as any, labelLayer);
       }
-      // REAL CLOUDS — visible, accurate, not lights. RainViewer is real precipitation (sea rain is correct), but was confused with city lights — now distinct.
-      fetch("https://api.rainviewer.com/public/weather-maps.json")
+      // REAL CLOUDS — deferred until idle so tiles + markers paint first
+      const loadRain = () => fetch("https://api.rainviewer.com/public/weather-maps.json")
         .then(r=> r.json())
         .then((data:any)=>{
           const frames = data?.radar?.past?.slice(-8) || [];
@@ -191,6 +190,8 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
           }, 850);
           (map as any)._cloudAnim = anim;
         }).catch(()=>{});
+      if("requestIdleCallback" in window) (window as any).requestIdleCallback(loadRain, { timeout: 4000 });
+      else setTimeout(loadRain, 2500);
       // super clear street — balanced exposure, never blown white, never dark
       map.on("zoom", ()=>{
         const z = map.getZoom();
@@ -256,7 +257,8 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       }, 180);
       (map as any)._dashAnim = dashAnim;
 
-      // Three.js custom layer — glowing pillars for shrines
+      // Three.js pillars — lazy import so first paint isn't blocked by the 600kb three bundle
+      import("three").then(THREE => {
       const customLayer = {
         id: "shrine-pillars",
         type: "custom" as const,
@@ -312,6 +314,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       // initial + on shrines change
       setTimeout(syncPillars, 500);
       (map as any)._syncPillars = syncPillars;
+      }).catch(()=>{});
     });
 
     return ()=> { const a=(map as any)._cloudAnim; if(a) clearInterval(a); const b=(map as any)._lightInt; if(b) clearInterval(b); const d=(map as any)._dashAnim; if(d) clearInterval(d); map.remove(); mapRef.current=null; };

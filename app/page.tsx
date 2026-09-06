@@ -296,6 +296,9 @@ export default function ShrineFable(){
             <span className="hidden lg:inline font-[family-name:var(--font-grotesk)] text-[11px] lowercase tracking-[0.16em] text-white/40 border-l border-white/10 pl-2 ml-1">{shrines.length} memories</span>
           </Link>
           <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto min-w-0">
+            <button onClick={()=> { setModalHandle(""); setModalTaken(false); setPendingAction(null); setHandleModal(true); }} title={userEmail ? `${handle} • ${userEmail}` : "sign in / claim handle"} className="inline-flex shrink-0 items-center gap-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-black/60 backdrop-blur-xl border border-white/15 text-white/80 hover:text-white hover:bg-black/80 px-3 sm:px-4 py-2 rounded-full">
+              <span className={`w-1.5 h-1.5 rounded-full ${userEmail ? "bg-emerald-400" : "bg-white/30"}`} />{handle && handle!=="you" ? `@${handle}` : "sign in"}
+            </button>
             <button onClick={()=> setShowTimeline(true)} className="inline-flex shrink-0 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-black/60 backdrop-blur-xl border border-white/15 text-white/80 hover:text-white hover:bg-black/80 px-3 sm:px-4 py-2 rounded-full">timeline</button>
             <Button onClick={()=> setOpen(true)} className="bg-[#ff3b30] text-white hover:bg-[#ff3b30]/90 rounded-full h-9 sm:h-10 px-3 sm:px-5 font-[family-name:var(--font-grotesk)] lowercase text-sm font-medium shadow-[0_12px_32px_rgba(255,59,48,0.4)] shrink-0 active:scale-95"><span className="sm:hidden">+ pin</span><span className="hidden sm:inline-flex items-center gap-1">pin your memory <PlusSignIcon size={14}/></span></Button>
           </div>
