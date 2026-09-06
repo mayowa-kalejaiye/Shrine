@@ -257,8 +257,8 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       }, 180);
       (map as any)._dashAnim = dashAnim;
 
-      // Three.js pillars — lazy import so first paint isn't blocked by the 600kb three bundle
-      import("three").then(THREE => {
+      // Three.js pillars — prefetched while map boots, applied the instant style loads
+      import(/* webpackPrefetch: true */ "three").then(THREE => {
       const customLayer = {
         id: "shrine-pillars",
         type: "custom" as const,
