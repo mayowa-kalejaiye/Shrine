@@ -292,7 +292,7 @@ export default function ShrineFable(){
       <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_rgba(255,59,48,0.06),_transparent_60%)]" />
 
       {/* FULLSCREEN MAP — true fullscreen, nav floats on map */}
-      <section className="relative h-screen w-full overflow-hidden bg-black">
+      <section className="relative h-[100dvh] w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
           <ShrineMap shrines={shrines} selectedId={selected?.id || null} onHover={()=>{}} onSelect={setSelected} onPick={(lat,lng)=> { setPicked({lat,lng,label:`${lat.toFixed(3)}, ${lng.toFixed(3)}`}); }} />
         </div>
@@ -384,7 +384,7 @@ export default function ShrineFable(){
             return dist(a)-dist(b);
           }).slice(0,6);
           return (
-          <motion.div initial={{y:320}} animate={{y:0}} exit={{y:320}} transition={{type:"spring", damping:30, stiffness:320}} className="absolute bottom-0 inset-x-0 sm:left-auto sm:right-6 sm:bottom-6 sm:w-[400px] max-h-[58vh] bg-[#0f0f0f] border-t sm:border border-white/10 rounded-t-[24px] sm:rounded-[24px] shadow-[0_-24px_80px_rgba(0,0,0,0.6)] z-20 overflow-hidden flex flex-col">
+          <motion.div initial={{y:320}} animate={{y:0}} exit={{y:320}} transition={{type:"spring", damping:30, stiffness:320}} className="absolute bottom-0 inset-x-0 sm:left-auto sm:right-6 sm:bottom-6 sm:w-[400px] max-h-[58dvh] bg-[#0f0f0f] border-t sm:border border-white/10 rounded-t-[24px] sm:rounded-[24px] shadow-[0_-24px_80px_rgba(0,0,0,0.6)] z-20 overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom)]">
             <div
               ref={sheetRef}
               className="flex flex-col min-h-0"
@@ -541,7 +541,7 @@ export default function ShrineFable(){
       </button>
 
       {/* LEFT DRAWER — collection, top bar at navbar level */}
-      <div id="collection-drawer" className="fixed top-0 left-0 h-screen w-[92%] sm:w-[420px] bg-[#0f0f0f] border-r border-white/10 shadow-[24px_0_80px_rgba(0,0,0,0.6)] z-[60] -translate-x-full transition-transform duration-300 overflow-auto">
+      <div id="collection-drawer" className="fixed top-0 left-0 h-[100dvh] w-[92%] sm:w-[420px] bg-[#0f0f0f] border-r border-white/10 shadow-[24px_0_80px_rgba(0,0,0,0.6)] z-[60] -translate-x-full transition-transform duration-300 overflow-auto pb-[env(safe-area-inset-bottom)]">
         <div className="sticky top-0 z-50 bg-[#0f0f0f]/95 backdrop-blur-xl border-b border-white/10 px-4 h-[64px] flex items-center justify-between shrink-0">
           <span className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-[0.14em] text-white/40">collection — {shrines.length} memories</span>
           <button onClick={()=> document.getElementById("collection-drawer")?.classList.add("-translate-x-full")} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 grid place-items-center shrink-0">✕</button>
