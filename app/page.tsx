@@ -17,8 +17,12 @@ import { Toaster, toast } from "sonner";
 
 const ShrineMap = dynamic(()=> import("@/components/ShrineMapGL"), { ssr:false, loading: ()=> <div className="h-[560px] w-full bg-[#0a0a0b] grid place-items-center font-[family-name:var(--font-grotesk)] text-sm lowercase text-white/30 tracking-[0.14em]">loading museum...</div> });
 
+// launch flag: set NEXT_PUBLIC_USE_SEED=false in Vercel to drop all simulated
+// pins (friends batch + real pins stay — they live in supabase + localStorage).
+const SEEDS: Shrine[] = process.env.NEXT_PUBLIC_USE_SEED === "false" ? [] : SEED_SHRINES;
+
 export default function ShrineFable(){
-  const [shrines, setShrines] = useState<Shrine[]>(SEED_SHRINES);
+  const [shrines, setShrines] = useState<Shrine[]>(SEEDS);
   const [open, setOpen] = useState(false);
   const [cityQuery, setCityQuery] = useState("");
   const [cityResults, setCityResults] = useState<{display_name:string, lat:number, lng:number, name:string}[]>([]);
@@ -38,6 +42,19 @@ export default function ShrineFable(){
   const [heroOpen, setHeroOpen] = useState(true);
   const [viewPhoto, setViewPhoto] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+  const [reportReason, setReportReason] = useState("spam/ad");
+  async function sendReport(){
+    if(!selected || reportSent) return;
+    try{
+      const res = await fetch("/api/report", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: selected.id, reason: reportReason, reporter: myHandle() }) });
+      if(res.status===429){ toast("too many reports — try again later"); return; }
+      if(!res.ok){ toast("report failed — try again"); return; }
+      setReportSent(true);
+      toast("reported — thanks", { description: "3+ reports auto-hides it. kill switch: /admin" });
+    }catch{ toast("report failed — try again"); }
+  }
   const [traceHandle, setTraceHandle] = useState<string|null>(null);
   const [userEmail, setUserEmail] = useState<string|null>(null);
   const [magicEmail, setMagicEmail] = useState("");
@@ -105,7 +122,7 @@ export default function ShrineFable(){
     }catch{}
   }
   useEffect(()=>{
-    setViewPhoto(false); setShareOpen(false); setEditing(false); setPhotoIdx(0); setShowComments(false); setCommentInput("");
+    setViewPhoto(false); setShareOpen(false); setReportOpen(false); setReportSent(false); setEditing(false); setPhotoIdx(0); setShowComments(false); setCommentInput("");
     if(!selected){ setComments([]); setFeltCount(0); return; }
     // felt count + mine — so the other person sees it
     (async ()=>{
@@ -155,15 +172,17 @@ export default function ShrineFable(){
     const mid = new URLSearchParams(window.location.search).get("memory");
     const load = async ()=>{
       const s=localStorage.getItem("shrine_pins");
-      let base: Shrine[] = SEED_SHRINES;
-      if(s){ try{ const p=JSON.parse(s); if(p.length >= SEED_SHRINES.length-20) base = p; }catch{} }
-      // supabase persistence — traffic mode, no limit
+      let base: Shrine[] = SEEDS;
+      if(s){ try{ const p=JSON.parse(s); if(SEEDS.length===0 || p.length >= SEEDS.length-20) base = p.length ? p : SEEDS; }catch{} }
+      // supabase persistence — traffic mode, no limit. hidden pins never reach the client map.
       if(supabase){
         try{
-          const { data } = await supabase.from("memories").select("*").order("created_at", {ascending:false}).limit(2000);
+          const { data } = await supabase.from("memories").select("*").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
           if(data && data.length){
             const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
             base = [...db, ...base.filter(b=> !db.find(x=> x.id===b.id))];
+          } else if(SEEDS.length===0 && !s){
+            base = [];
           }
         }catch{}
       }
@@ -493,6 +512,27 @@ export default function ShrineFable(){
                     <button onClick={()=> setShareOpen(true)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white text-black font-[family-name:var(--font-grotesk)] text-xs lowercase font-medium active:scale-95"><Share01Icon size={13}/> share</button>
                     {selected.handle===handle && selected.handle!=="you" && (
                       <button onClick={()=> { setEditing(true); setEditLine(selected.line); setEditDate(new Date(selected.createdAt).toISOString().slice(0,10)); }} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">edit</button>
+                    )}
+                  </div>
+                  {/* report — day-one moderation: 3+ reports auto-hides, /admin is the kill switch */}
+                  <div className="mt-2">
+                    {!reportOpen ? (
+                      <button onClick={()=> setReportOpen(true)} className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase tracking-wide text-white/25 hover:text-white/60">report this memory</button>
+                    ) : reportSent ? (
+                      <p className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase text-emerald-400/80">reported — thanks for keeping the map clean</p>
+                    ) : (
+                      <div className="rounded-xl bg-white/[0.04] border border-white/10 p-3">
+                        <div className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase tracking-[0.14em] text-white/40">why?</div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {["spam/ad","hate/harassment","gore/sexual","fake/test","other"].map(r=>(
+                            <button key={r} onClick={()=> setReportReason(r)} className={`rounded-full px-3 py-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase border transition active:scale-95 ${reportReason===r?"bg-white text-black border-white":"bg-transparent border-white/15 text-white/60 hover:text-white"}`}>{r}</button>
+                          ))}
+                        </div>
+                        <div className="mt-2.5 flex gap-2">
+                          <button onClick={sendReport} className="flex-1 rounded-full bg-white text-black h-9 font-[family-name:var(--font-grotesk)] lowercase text-xs font-medium active:scale-[0.98]">send report</button>
+                          <button onClick={()=> setReportOpen(false)} className="flex-1 rounded-full border border-white/15 h-9 font-[family-name:var(--font-grotesk)] lowercase text-xs text-white/60">cancel</button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </>

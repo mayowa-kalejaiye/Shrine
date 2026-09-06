@@ -44,24 +44,8 @@ create policy "insert comments" on comments for insert with check (true);
 create index if not exists comments_memory_idx on comments(memory_id, created_at desc);
 -- allow multiple photos per memory
 alter table memories add column if not exists images text[] default '{}';
--- reserved handles enforced IN THE DB (client + API can be bypassed by direct anon inserts)
-do $$ begin
-  alter table users add constraint users_handle_reserved
-    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner'));
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table memories add constraint memories_handle_reserved
-    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner'));
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table comments add constraint comments_handle_reserved
-    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner'));
-exception when duplicate_object then null; end $$;
-do $$ begin
-  alter table felt add constraint felt_handle_reserved
-    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner'));
-exception when duplicate_object then null; end $$;
 -- felt: memory_id text (no fk) so seeds work too; one felt per handle per memory
+-- NOTE: created BEFORE the handle guards below — guards reference this table.
 create table if not exists felt (
   memory_id text not null,
   handle text not null,
@@ -76,6 +60,27 @@ create policy "insert felt" on felt for insert with check (true);
 drop policy if exists "delete felt" on felt;
 create policy "delete felt" on felt for delete using (true);
 create index if not exists felt_memory_idx on felt(memory_id);
+-- reserved handles enforced IN THE DB for NEW writes (client + API can be
+-- bypassed by direct anon inserts). NOT VALID = existing rows are grandfathered,
+-- so this never fails with 23514 on old test data ('you', 'anon', ...).
+-- optional cleanup: remap/delete grandfathered rows, then run
+--   alter table {users,memories,comments,felt} validate constraint {…}_handle_reserved;
+do $$ begin
+  alter table users add constraint users_handle_reserved
+    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner')) not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table memories add constraint memories_handle_reserved
+    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner')) not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table comments add constraint comments_handle_reserved
+    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner')) not valid;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table felt add constraint felt_handle_reserved
+    check (handle not in ('you','me','yours','mine','my','admin','administrator','shrine','support','help','null','undefined','anonymous','anon','anons','deleted','unknown','everyone','here','channel','official','team','moderator','mod','system','bot','owner')) not valid;
+exception when duplicate_object then null; end $$;
 -- moderation (day-one minimal): reports + hidden kill switch
 -- run in supabase SQL editor. reporters stay private: insert is open, select is NOT
 -- (admin reads via service_role key in /api/admin, never the anon key).
