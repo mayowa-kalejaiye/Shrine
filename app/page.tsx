@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SEED_SHRINES, Shrine, ShrineComment } from "@/lib/shrine-data";
 import { supabase } from "@/lib/supabase";
+import { createClient as createBrowser } from "@/lib/supabase-client";
 import DatePicker from "@/components/DatePicker";
 import { MapPinIcon, ImageAdd01Icon, ViewIcon, Share01Icon, Download01Icon, PlusSignIcon, Location01Icon, ArrowRight01Icon, ArrowUpRight01Icon, FavouriteIcon, ArrowLeft01Icon } from "hugeicons-react";
 import { Toaster, toast } from "sonner";
@@ -37,6 +38,15 @@ export default function ShrineFable(){
   const [heroOpen, setHeroOpen] = useState(true);
   const [viewPhoto, setViewPhoto] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string|null>(null);
+  const [magicEmail, setMagicEmail] = useState("");
+  const [magicSent, setMagicSent] = useState(false);
+  useEffect(()=>{
+    const browser = createBrowser();
+    browser.auth.getUser().then(({ data })=> setUserEmail(data.user?.email ?? null));
+    const { data: sub } = browser.auth.onAuthStateChange((_e, session)=> setUserEmail(session?.user?.email ?? null));
+    return ()=> { sub.subscription.unsubscribe(); };
+  },[]);
   const [handleModal, setHandleModal] = useState(false);
   const [modalHandle, setModalHandle] = useState("");
   const [modalTaken, setModalTaken] = useState(false);
@@ -689,6 +699,32 @@ export default function ShrineFable(){
               ? <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-[#ff3b30]">@{modalHandle} is taken or reserved</p>
               : modalHandle ? <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-emerald-400">@{modalHandle} is free</p> : null}
             <Button disabled={!modalHandle || modalTaken} onClick={()=> { (async ()=>{ if(supabase){ try{ await supabase.from("users").upsert({ handle: modalHandle }, { onConflict:"handle" }); }catch{} } setHandle(modalHandle); localStorage.setItem("shrine_handle", modalHandle); setHandleModal(false); pendingAction?.(); setPendingAction(null); })(); }} className="mt-4 w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">claim @{modalHandle || "..."}</Button>
+            <div className="mt-4 flex items-center gap-3">
+              <span className="flex-1 h-px bg-white/10" />
+              <span className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase tracking-[0.14em] text-white/30">lock it to you</span>
+              <span className="flex-1 h-px bg-white/10" />
+            </div>
+            {userEmail ? (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3.5 h-11">
+                <span className="font-[family-name:var(--font-grotesk)] text-sm lowercase truncate">{userEmail}</span>
+                <button onClick={async ()=> { await createBrowser().auth.signOut(); setUserEmail(null); }} className="ml-auto font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/50 hover:text-white underline underline-offset-2 shrink-0">sign out</button>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                <Button onClick={async ()=> { await createBrowser().auth.signInWithOAuth({ provider:"google", options:{ redirectTo: `${window.location.origin}/auth/callback` } }); }} className="w-full rounded-xl bg-white text-black hover:bg-white/90 h-11 font-[family-name:var(--font-grotesk)] lowercase text-sm font-medium">
+                  <svg width="15" height="15" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                  continue with google
+                </Button>
+                {magicSent ? (
+                  <p className="text-center font-[family-name:var(--font-grotesk)] text-xs lowercase text-emerald-400">check {magicEmail} — tap the link to sign in</p>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input value={magicEmail} onChange={e=> setMagicEmail(e.target.value)} onKeyDown={e=> { if(e.key==="Enter" && magicEmail.includes("@")){ createBrowser().auth.signInWithOtp({ email: magicEmail, options:{ emailRedirectTo: `${window.location.origin}/auth/callback` } }).then(()=> setMagicSent(true)); } }} type="email" placeholder="you@email.com" className="flex-1 bg-black/40 border-white/10 rounded-xl font-[family-name:var(--font-grotesk)] lowercase h-11" />
+                    <Button disabled={!magicEmail.includes("@")} onClick={()=> { createBrowser().auth.signInWithOtp({ email: magicEmail, options:{ emailRedirectTo: `${window.location.origin}/auth/callback` } }).then(()=> setMagicSent(true)); }} className="rounded-xl bg-white/10 border border-white/10 hover:bg-white/15 h-11 px-4 font-[family-name:var(--font-grotesk)] lowercase text-xs shrink-0 disabled:opacity-40">magic link</Button>
+                  </div>
+                )}
+              </div>
+            )}
             <button onClick={()=> { setHandleModal(false); setPendingAction(null); }} className="mt-2.5 w-full font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white/70">cancel</button>
           </div>
         </div>
