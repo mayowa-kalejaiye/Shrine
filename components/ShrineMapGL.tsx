@@ -550,9 +550,15 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
             <div className="w-10 h-10 rounded-xl bg-white text-black grid place-items-center mx-auto"><Location01Icon size={18}/></div>
             <div className="mt-3 text-center font-[family-name:var(--font-serif)] lowercase text-lg">find me on the map</div>
             {locModal.blocked ? (
-              <p className="mt-2 text-center font-[family-name:var(--font-grotesk)] text-sm lowercase leading-6 text-white/60">
-                iphone blocked location. open settings → privacy & security → location services → on, then allow safari (or this app) → come back and try again.
-              </p>
+              isIOS() ? (
+                <p className="mt-2 text-center font-[family-name:var(--font-grotesk)] text-sm lowercase leading-6 text-white/60">
+                  iphone blocked location. open settings → privacy & security → location services → on, then allow safari (or this app) → come back and try again.
+                </p>
+              ) : (
+                <p className="mt-2 text-center font-[family-name:var(--font-grotesk)] text-sm lowercase leading-6 text-white/60">
+                  location is blocked for this site. tap the lock icon in the address bar → site settings → allow location, then try again.
+                </p>
+              )
             ) : (
               <p className="mt-2 text-center font-[family-name:var(--font-grotesk)] text-sm lowercase leading-6 text-white/60">
                 next your iphone will ask for location — tap allow so we can fly you home.

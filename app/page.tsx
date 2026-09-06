@@ -802,9 +802,15 @@ export default function ShrineFable(){
                 <div className="mt-2 rounded-2xl bg-[#1a1a1a] border border-white/10 p-4">
                   <div className="font-[family-name:var(--font-serif)] lowercase text-[15px]">find me for this pin</div>
                   {pinLocModal.blocked ? (
-                    <p className="mt-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase leading-5 text-white/60">
-                      iphone blocked location. open settings → privacy & security → location services → on, allow safari → come back and retry. or just search above — same result.
-                    </p>
+                    isIOS() ? (
+                      <p className="mt-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase leading-5 text-white/60">
+                        iphone blocked location. open settings → privacy & security → location services → on, allow safari → come back and retry. or just search above — same result.
+                      </p>
+                    ) : (
+                      <p className="mt-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase leading-5 text-white/60">
+                        location is blocked for this site. tap the lock icon in the address bar → site settings → allow location, then retry. or just search above — same result.
+                      </p>
+                    )
                   ) : (
                     <p className="mt-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase leading-5 text-white/60">
                       your iphone will ask for location next — tap allow. or skip and search above.
