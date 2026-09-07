@@ -362,12 +362,23 @@ export default function ShrineFable(){
     const id = selected.id;
     const removeEverywhere = ()=>{
       setShrines(prev=> prev.filter(x=> x.id!==id));
-      // scrub localStorage now — don't wait on the persistence effect
+      // scrub every local cache now — pins, its comments, its felt flag
       try{
         const raw = localStorage.getItem("shrine_pins");
         if(raw){
           const all = JSON.parse(raw);
           localStorage.setItem("shrine_pins", JSON.stringify(all.filter((x:any)=> x.id!==id)));
+        }
+        const rc = localStorage.getItem("shrine_comments");
+        if(rc){
+          const allc = JSON.parse(rc);
+          localStorage.setItem("shrine_comments", JSON.stringify(allc.filter((c:any)=> c.memory_id!==id)));
+        }
+        const rf = localStorage.getItem("shrine_felt");
+        if(rf){
+          const allf = JSON.parse(rf);
+          delete allf[id];
+          localStorage.setItem("shrine_felt", JSON.stringify(allf));
         }
       }catch{}
       setSelected(null);
