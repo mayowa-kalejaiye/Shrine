@@ -244,7 +244,7 @@ export default function ShrineFable(){
         try{
           const { data } = await supabase.from("memories").select("*").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
           if(data && data.length){
-            const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
+            const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, images:d.images?.length?d.images:[d.image], line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
             base = [...db, ...base.filter(b=> !db.find(x=> x.id===b.id))];
           } else if(SEEDS.length===0 && !s){
             base = [];
@@ -662,13 +662,20 @@ export default function ShrineFable(){
           </motion.div>
           );
         })()}
-        {/* photo viewer — tap picture to see it big, blurred bg */}
+        {/* photo viewer — tap picture to see it big, blurred bg. arrows when 2-3 photos */}
         {selected && viewPhoto && (
           <div onClick={()=> setViewPhoto(false)} className="absolute inset-0 z-30 bg-black/70 backdrop-blur-xl grid place-items-center p-6">
             {((selected.images && selected.images[photoIdx]) || selected.image).startsWith("data:video/") ? (
               <video src={(selected.images && selected.images[photoIdx]) || selected.image} controls playsInline onClick={e=> e.stopPropagation()} className="max-h-[76vh] max-w-full rounded-2xl shadow-[0_32px_80px_rgba(0,0,0,0.7)]" />
             ) : (
               <img src={(selected.images && selected.images[photoIdx]) || selected.image} onClick={e=> e.stopPropagation()} className="max-h-[76vh] max-w-full rounded-2xl object-contain shadow-[0_32px_80px_rgba(0,0,0,0.7)]" alt=""/>
+            )}
+            {(selected.images && selected.images.length > 1) && (
+              <>
+                <button aria-label="previous photo" onClick={e=> { e.stopPropagation(); setPhotoIdx((photoIdx - 1 + selected.images!.length) % selected.images!.length); }} className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-xl grid place-items-center text-white text-lg hover:bg-black/70 active:scale-95">‹</button>
+                <button aria-label="next photo" onClick={e=> { e.stopPropagation(); setPhotoIdx((photoIdx + 1) % selected.images!.length); }} className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 backdrop-blur-xl grid place-items-center text-white text-lg hover:bg-black/70 active:scale-95">›</button>
+                <span className="absolute bottom-16 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide text-white/50">{photoIdx + 1}/{selected.images.length}</span>
+              </>
             )}
             <span className="absolute bottom-8 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide text-white/50">tap anywhere to return</span>
           </div>
