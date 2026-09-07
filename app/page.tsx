@@ -100,21 +100,33 @@ export default function ShrineFable(){
   const [userEmail, setUserEmail] = useState<string|null>(null);
   const [magicEmail, setMagicEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
-  // if this browser forgot your @ (fresh device, cleared storage), ask the server:
-  // a signed-in account restores its locked handle automatically.
+  // identity rule: the SIGNED-IN account is the source of truth, not this browser.
+  // fresh device restores its locked @; switching accounts drops the old @ and
+  // resolves the new one (or "you" if the new account holds nothing yet).
+  const lastUid = useRef<string|null>(null);
   async function restoreHandle(){
     try{
-      if(localStorage.getItem("shrine_handle")) return;
       const res = await fetch("/api/claim", { method: "GET" });
       if(!res.ok) return;
       const j = await res.json();
       if(j.handle){ setHandle(j.handle); localStorage.setItem("shrine_handle", j.handle); }
     }catch{}
   }
+  function onSessionUser(user: any){
+    setUserEmail(user?.email ?? null);
+    if(!user){ lastUid.current = null; return; }
+    const switched = lastUid.current !== null && lastUid.current !== user.id;
+    lastUid.current = user.id;
+    if(switched){
+      localStorage.removeItem("shrine_handle");
+      setHandle("you");
+    }
+    restoreHandle();
+  }
   useEffect(()=>{
     const browser = createBrowser();
-    browser.auth.getUser().then(({ data })=> { setUserEmail(data.user?.email ?? null); if(data.user) restoreHandle(); });
-    const { data: sub } = browser.auth.onAuthStateChange((_e, session)=> { setUserEmail(session?.user?.email ?? null); if(session?.user) restoreHandle(); });
+    browser.auth.getUser().then(({ data })=> onSessionUser(data.user));
+    const { data: sub } = browser.auth.onAuthStateChange((_e, session)=> onSessionUser(session?.user));
     return ()=> { sub.subscription.unsubscribe(); };
   },[]);
   const [handleModal, setHandleModal] = useState(false);
@@ -336,6 +348,8 @@ export default function ShrineFable(){
     if(!line.trim() || !image) return;
     if(!picked) return alert("pick a location — search, use current, or tap map");
     const clean = handle.toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20) || "you";
+    // server rejects placeholder/reserved handles — claim first instead of failing silently
+    if(clean==="you" || RESERVED.includes(clean)){ ensureHandle(()=> pin()); return; }
     if(handleTaken && clean!==localStorage.getItem("shrine_handle")) return alert(`@${clean} is taken — pick another`);
     setHandle(clean); localStorage.setItem("shrine_handle", clean);
     const when = memDate ? new Date(memDate + "T12:00:00").getTime() : Date.now();
@@ -347,6 +361,7 @@ export default function ShrineFable(){
       const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: capMedia(cover), images: (s.images||[]).map(capMedia) }) });
       if(res.status===429) toast("pin saved on your phone", { description: "you're pinning too fast — wait a bit" });
       else if(res.status===403) toast(`@${clean} is locked`, { description: "that @ belongs to a signed-in account" });
+      else if(!res.ok) toast("pin didn't sync", { description: "saved on your phone only — try again" });
     }catch{} finally{ setPinning(false); }
     // nearby trigger — check within 20km
     const nearby = shrines.filter(x=> haversine({lat:picked.lat,lng:picked.lng},{lat:x.lat,lng:x.lng})<20);
