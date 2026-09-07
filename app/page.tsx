@@ -446,7 +446,7 @@ export default function ShrineFable(){
           <h1 className="relative font-[family-name:var(--font-serif)] text-[26px] min-[400px]:text-[30px] sm:text-[48px] leading-[0.9] sm:leading-[0.85] tracking-[-0.04em] lowercase bg-black/60 backdrop-blur-xl border border-white/10 rounded-[16px] sm:rounded-[18px] px-4 sm:px-5 py-3.5 sm:py-4 pointer-events-auto">
             <button aria-label="dismiss" onClick={()=> setHeroOpen(false)} className="sm:hidden absolute top-2 right-2 w-6 h-6 rounded-full bg-white/10 grid place-items-center text-white/60 text-xs">✕</button>
             where did this<br/><span className="text-white/40 italic">memory happen?</span>
-            <p className="mt-2 sm:mt-3 font-[family-name:var(--font-grotesk)] text-[12px] sm:text-[13px] leading-5 sm:leading-6 lowercase tracking-wide text-white/60 font-normal">tap map to pin. drag, scroll to street, pitch to see 3d.</p>
+            <p className="mt-2 sm:mt-3 font-[family-name:var(--font-grotesk)] text-[12px] sm:text-[13px] leading-5 sm:leading-6 lowercase tracking-wide text-white/60 font-normal">one photo, one line — keep the moments you'd hate to lose.</p>
           </h1>
         </motion.div>
         )}

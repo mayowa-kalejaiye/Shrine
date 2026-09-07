@@ -364,11 +364,13 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     const updateClusterData = ()=>{
       const geojson = {
         type:"FeatureCollection" as const,
-        features: shrines.map(s=> ({
-          type:"Feature" as const,
-          geometry:{ type:"Point" as const, coordinates:[s.lng, s.lat] },
-          properties:{ id:s.id, city:s.city, handle:s.handle, line:s.line, image:s.image }
-        }))
+        features: shrines
+          .filter(s=> typeof s.lat==="number" && typeof s.lng==="number" && !isNaN(s.lat) && !isNaN(s.lng) && Math.abs(s.lat)<=90 && Math.abs(s.lng)<=180)
+          .map(s=> ({
+            type:"Feature" as const,
+            geometry:{ type:"Point" as const, coordinates:[s.lng, s.lat] },
+            properties:{ id:s.id, city:s.city, handle:s.handle, line:s.line, image:s.image }
+          }))
       };
       const src = map.getSource("shrines") as any;
       if(src) src.setData(geojson as any);
@@ -380,9 +382,11 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
         type:"geojson",
         data:{
           type:"FeatureCollection",
-          features: shrines.map(s=> ({
-            type:"Feature", geometry:{type:"Point", coordinates:[s.lng, s.lat]}, properties:{id:s.id}
-          }))
+          features: shrines
+            .filter(s=> typeof s.lat==="number" && typeof s.lng==="number" && !isNaN(s.lat) && !isNaN(s.lng) && Math.abs(s.lat)<=90 && Math.abs(s.lng)<=180)
+            .map(s=> ({
+              type:"Feature", geometry:{type:"Point", coordinates:[s.lng, s.lat]}, properties:{id:s.id}
+            }))
         } as any,
         cluster:true, clusterMaxZoom:14, clusterRadius:50
       } as any);
@@ -478,41 +482,22 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       map.on("mouseleave", "unclustered-point", ()=> map.getCanvas().style.cursor="");
     };
     const addMarkers = ()=>{
-      // fallback for <100 shrines — keep DOM markers for crisp, else use cluster
-      if(shrines.length>120){
-        updateClusterData();
-        if(!map.getSource("shrines")) setupCluster();
-        else updateClusterData();
-        // hide old DOM markers
-        const existing = (map as any)._shrineMarkers as any[] | undefined;
-        existing?.forEach((m:any)=> m.remove());
-        return;
-      }
-      const existing = (map as any)._shrineMarkers as mapboxgl.Marker[] | undefined;
+      // always cluster — counts from 2+, person icon for a lone pin, splits as you zoom.
+      // (retired the DOM-marker path: two render paths meant two ways to show nothing.)
+      updateClusterData();
+      if(!map.getSource("shrines")) setupCluster();
+      else updateClusterData();
+      // retire any legacy DOM markers
+      const existing = (map as any)._shrineMarkers as any[] | undefined;
       existing?.forEach((m:any)=> m.remove());
-      const markers: any[] = [];
-      shrines.forEach(s=>{
-        // one bad pin must never nuke the rest — validate + isolate
-        try{
-          if(typeof s.lat!=="number" || typeof s.lng!=="number" || isNaN(s.lat) || isNaN(s.lng)) return;
-          if(Math.abs(s.lat)>90 || Math.abs(s.lng)>180) return;
-          const el = document.createElement("div");
-        el.className = "shrine-marker";
-        el.style.cssText = `width:14px;height:14px;background:#ff3b30;border:2px solid white;border-radius:999px;box-shadow:0 0 14px rgba(255,59,48,0.9), 0 0 22px rgba(255,59,48,0.35), 0 2px 8px rgba(0,0,0,0.5);display:grid;place-items:center;cursor:pointer;transition:transform 0.15s;`;
-        el.innerHTML = `<span style="width:6px;height:6px;background:white;border-radius:999px;display:block;box-shadow:0 0 6px rgba(255,255,255,0.8)"></span>`;
-        el.onmouseenter = ()=> onHoverRef.current?.(s.id);
-        el.onmouseleave = ()=> onHoverRef.current?.(null);
-        el.onclick = (e)=> { e.stopPropagation(); (e as any).preventDefault?.(); onSelectRef.current?.(s); onHoverRef.current?.(s.id); map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:55, bearing: (Math.random()-0.5)*30, duration:2400, essential:true}); map.once("moveend", ()=> (map as any)._syncPillars?.()); };
-        const m = new mapboxgl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(map);
-        markers.push(m);
-        }catch{ /* bad pin skipped, rest render */ }
-      });
-      (map as any)._shrineMarkers = markers;
+      (map as any)._shrineMarkers = [];
       (map as any)._syncPillars?.();
       (map as any)._drawConnections?.();
     };
+    // always call the LATEST addMarkers (never a stale closure off first load)
+    (map as any)._addMarkers = addMarkers;
     if(map.isStyleLoaded()) addMarkers();
-    else map.once("load", addMarkers);
+    else map.once("load", ()=> (map as any)._addMarkers?.());
   },[shrines]);
 
   const [locModal, setLocModal] = useState<null | { blocked: boolean }>(null);
