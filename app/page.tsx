@@ -99,14 +99,27 @@ export default function ShrineFable(){
   const [userEmail, setUserEmail] = useState<string|null>(null);
   const [magicEmail, setMagicEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
+  // if this browser forgot your @ (fresh device, cleared storage), ask the server:
+  // a signed-in account restores its locked handle automatically.
+  async function restoreHandle(){
+    try{
+      if(localStorage.getItem("shrine_handle")) return;
+      const res = await fetch("/api/claim", { method: "GET" });
+      if(!res.ok) return;
+      const j = await res.json();
+      if(j.handle){ setHandle(j.handle); localStorage.setItem("shrine_handle", j.handle); }
+    }catch{}
+  }
   useEffect(()=>{
     const browser = createBrowser();
-    browser.auth.getUser().then(({ data })=> setUserEmail(data.user?.email ?? null));
-    const { data: sub } = browser.auth.onAuthStateChange((_e, session)=> setUserEmail(session?.user?.email ?? null));
+    browser.auth.getUser().then(({ data })=> { setUserEmail(data.user?.email ?? null); if(data.user) restoreHandle(); });
+    const { data: sub } = browser.auth.onAuthStateChange((_e, session)=> { setUserEmail(session?.user?.email ?? null); if(session?.user) restoreHandle(); });
     return ()=> { sub.subscription.unsubscribe(); };
   },[]);
   const [handleModal, setHandleModal] = useState(false);
   const [modalHandle, setModalHandle] = useState("");
+  const [changingHandle, setChangingHandle] = useState(false);
+  useEffect(()=>{ if(!handleModal){ setChangingHandle(false); setModalHandle(""); setModalTaken(false); } },[handleModal]);
   const [modalTaken, setModalTaken] = useState(false);
   const [changeHandle, setChangeHandle] = useState(false);
   const [pendingAction, setPendingAction] = useState<null | (()=>void)>(null);
@@ -946,8 +959,16 @@ export default function ShrineFable(){
       {handleModal && (
         <div onClick={()=> { setHandleModal(false); setPendingAction(null); }} className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-md grid place-items-center p-6">
           <div onClick={e=> e.stopPropagation()} className="w-full max-w-[360px] bg-[#141414] border border-white/10 rounded-[20px] p-6">
-            <div className="font-[family-name:var(--font-serif)] lowercase text-xl">claim your @</div>
-            <p className="font-[family-name:var(--font-grotesk)] text-sm lowercase text-white/50 mt-1">you need a name before you join in — no @you, @me scums allowed.</p>
+            <div className="font-[family-name:var(--font-serif)] lowercase text-xl">{handle && handle!=="you" ? "your @" : "claim your @"}</div>
+            <p className="font-[family-name:var(--font-grotesk)] text-sm lowercase text-white/50 mt-1">{handle && handle!=="you" ? "locked to your account — one @ per account." : "you need a name before you join in — no @you, @me scums allowed."}</p>
+            {(handle && handle!=="you" && !changingHandle) ? (
+              <div className="mt-4 flex items-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3.5 h-11">
+                <span className="font-[family-name:var(--font-grotesk)] text-sm lowercase">@{handle}</span>
+                <span className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-emerald-400">• locked</span>
+                <button onClick={()=> { setChangingHandle(true); setModalHandle(""); setModalTaken(false); }} className="ml-auto font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">change</button>
+              </div>
+            ) : (
+            <>
             <div className="mt-4 relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 font-[family-name:var(--font-grotesk)]">@</span>
               <Input value={modalHandle} onChange={e=> { const v=e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20); setModalHandle(v); (async ()=>{ if(!v){ setModalTaken(false); return; } if(RESERVED.includes(v)){ setModalTaken(true); return; } if(supabase){ try{ const [{ data: mem }, { data: usr }] = await Promise.all([supabase.from("memories").select("id").eq("handle", v).limit(1), supabase.from("users").select("id").eq("handle", v).limit(1)]); setModalTaken(!!(mem && mem.length) || !!(usr && usr.length)); return; }catch{} } setModalTaken(shrines.some(s=> s.handle===v)); })(); }} onKeyDown={e=> { if(e.key==="Enter" && modalHandle && !modalTaken){ (async ()=>{ if(await claimHandle(modalHandle)){ setHandleModal(false); pendingAction?.(); setPendingAction(null); } })(); } }} placeholder="mayowa" className="bg-black/40 border-white/10 rounded-xl font-[family-name:var(--font-grotesk)] lowercase h-11 pl-8" maxLength={20}/>
@@ -956,6 +977,8 @@ export default function ShrineFable(){
               ? <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-[#ff3b30]">@{modalHandle} is taken or reserved</p>
               : modalHandle ? <p className="mt-2 font-[family-name:var(--font-grotesk)] text-xs lowercase text-emerald-400">@{modalHandle} is free</p> : null}
             <Button disabled={!modalHandle || modalTaken} onClick={()=> { (async ()=>{ if(await claimHandle(modalHandle)){ setHandleModal(false); pendingAction?.(); setPendingAction(null); } })(); }} className="mt-4 w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">claim @{modalHandle || "..."}</Button>
+            </>
+            )}
             <div className="mt-4 flex items-center gap-3">
               <span className="flex-1 h-px bg-white/10" />
               <span className="font-[family-name:var(--font-grotesk)] text-[11px] lowercase tracking-[0.14em] text-white/30">lock it to you</span>

@@ -13,6 +13,18 @@ function db() {
   return createClient(URL, SERVICE || ANON);
 }
 
+// GET — whoami: which handle (if any) is linked to YOUR signed-in account.
+// Lets a fresh browser restore your locked @ instead of showing "sign in".
+export async function GET() {
+  if (!URL || !ANON) return NextResponse.json({ handle: null }, { status: 500 });
+  const me = await sessionUser();
+  if (!me) return NextResponse.json({ error: "signed out" }, { status: 401 });
+  const sb = createClient(URL, SERVICE || ANON);
+  const { data } = await sb.from("users").select("handle").eq("auth_user_id", me.id).limit(1);
+  const handle = ((data as any[] | null)?.[0]?.handle as string | undefined) || null;
+  return NextResponse.json({ handle });
+}
+
 // POST { handle } — claims a handle for YOUR signed-in account. 1 account per @,
 // 1 @ per account, enforced here (rate-limited).
 export async function POST(req: Request) {
