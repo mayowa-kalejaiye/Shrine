@@ -80,6 +80,13 @@ export default function Admin() {
     toast(j.suspects.length ? `${j.suspects.length} suspect pin(s)` : "all clear", { description: `scanned ${j.scanned}` });
   }
 
+  async function notifyRepair(handle: string) {
+    const j = await call("notify-repair", { handle });
+    if (!j) return;
+    if (!j.sent) toast(`no email for @${handle}`, { description: "they never opted into alerts — message them manually" });
+    else toast(`emailed @${handle}`, { description: "told them to open the pin → repair photos" });
+  }
+
   const byMem = new Map<string, Report[]>();
   for (const r of reports) {
     const a = byMem.get(r.memory_id) || [];
@@ -199,7 +206,7 @@ export default function Admin() {
                   {scan.suspects.map(s => (
                     <div key={s.id} className="flex items-center gap-2 text-sm lowercase">
                       <span className="truncate">“{s.line.slice(0, 40)}…” <span className="text-white/40">@{s.handle}</span></span>
-                      <span className="ml-auto text-xs text-amber-300/80 shrink-0">tell @{s.handle} to open it → repair photos</span>
+                      <button onClick={() => notifyRepair(s.handle)} className="ml-auto text-xs text-white bg-white/10 hover:bg-white/20 rounded-full px-3 py-1.5 shrink-0">notify</button>
                     </div>
                   ))}
                 </div>

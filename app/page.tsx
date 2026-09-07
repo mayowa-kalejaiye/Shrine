@@ -411,23 +411,6 @@ export default function ShrineFable(){
       toast("memory deleted", { description: "gone from the map forever" });
     }catch{ toast("couldn't delete — try again"); }
   }
-  // repair button only surfaces when this pin's server copy is actually truncated
-  // (server cover shorter than the intact local copy) — no clutter otherwise.
-  const [needsRepair, setNeedsRepair] = useState(false);
-  useEffect(()=>{
-    setNeedsRepair(false);
-    if(!selected || !supabase || selected.handle!==handle || handle==="you") return;
-    let cancelled = false;
-    (async ()=>{
-      try{
-        const { data } = await supabase.from("memories").select("image").eq("id", selected.id).single();
-        const serverLen = String((data as any)?.image || "").length;
-        const localLen = String(selected.image || "").length;
-        if(!cancelled && serverLen > 0 && localLen - serverLen > 1000) setNeedsRepair(true);
-      }catch{}
-    })();
-    return ()=> { cancelled = true; };
-  },[selected?.id, handle]);
   async function repairPhotos(){    if(!selected || selected.handle!==handle || handle==="you") return;
     const local = (selected.images?.length ? selected.images : [selected.image]).slice(0,3);
     toast("repairing photos...");
@@ -461,6 +444,34 @@ export default function ShrineFable(){
       }catch{ applyLocal(); toast("memory updated", { description: "saved on your phone — sync failed" }); }
     })();
   }
+  // self-heal nudge: once per session, check my own pins against server copies.
+  // truncated ones get a toast that opens the first broken pin (repair button waits there).
+  useEffect(()=>{
+    if(!supabase || !handle || handle==="you" || shrines.length===0) return;
+    if(sessionStorage.getItem("shrine_repair_nudged")) return;
+    let cancelled = false;
+    (async ()=>{
+      try{
+        const mine = shrines.filter(s=> s.handle===handle && s.image?.startsWith("data:image/")).slice(0,50);
+        if(!mine.length) return;
+        const { data } = await supabase.from("memories").select("id,image").in("id", mine.map(m=> m.id));
+        const server = new Map(((data || []) as any[]).map(r=> [r.id, String(r.image || "").length]));
+        const broken = mine.filter(m=> {
+          const sl = server.get(m.id) ?? -1;
+          return sl > 0 && String(m.image).length - sl > 1000;
+        });
+        if(!cancelled && broken.length){
+          sessionStorage.setItem("shrine_repair_nudged", "1");
+          toast(`${broken.length} of your photo${broken.length > 1 ? "s need" : " needs"} repair`, {
+            description: "others see a broken image — your phone has the good copy",
+            duration: 9000,
+            action: { label: "open first", onClick: ()=> setSelected(broken[0]) },
+          });
+        }
+      }catch{}
+    })();
+    return ()=> { cancelled = true; };
+  },[shrines.length, handle]);
   // anniversary trigger
   useEffect(()=>{
     const ann = shrines.filter(s=> {
@@ -679,7 +690,7 @@ export default function ShrineFable(){
                     {selected.handle===handle && selected.handle!=="you" && (
                       <>
                         <button onClick={()=> { setEditing(true); setEditLine(selected.line); setEditDate(new Date(selected.createdAt).toISOString().slice(0,10)); }} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">edit</button>
-                        {needsRepair && <button onClick={repairPhotos} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-amber-300/70 hover:text-amber-300 underline underline-offset-2">repair photos</button>}
+                        <button onClick={repairPhotos} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">repair photos</button>
                         <button onClick={deleteMemory} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-[#ff3b30]/60 hover:text-[#ff3b30] underline underline-offset-2">delete</button>
                       </>
                     )}

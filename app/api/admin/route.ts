@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { cleanHandle } from "@/lib/handles";
+import { sendAlertEmail, alertsConfigured } from "@/lib/notify";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 // SERVER-ONLY keys — never prefix with NEXT_PUBLIC_.
@@ -79,8 +81,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  if (b.action === "scan-photos") {
-    // pre-fix truncation cut covers at exactly 150k (client) / 200k (server) chars.
+  if (b.action === "notify-repair") {
+    // email the author their pin needs repair — only works if they opted into alerts
+    // (that's the only email we hold). otherwise the admin messages them manually.
+    const handle = cleanHandle(b.handle);
+    if (!handle) return NextResponse.json({ error: "handle required" }, { status: 400 });
+    if (!alertsConfigured()) return NextResponse.json({ error: "email sender missing" }, { status: 503 });
+    const { data: subs } = await sb.from("alerts").select("email").eq("handle", handle);
+    const emails = [...new Set((((subs || []) as any[]).map((s) => s.email).filter(Boolean)))];
+    if (!emails.length) return NextResponse.json({ ok: true, sent: 0 });
+    const sent = await sendAlertEmail(
+      emails.join(","),
+      "one of your shrine photos needs repair",
+      `one of your pins is showing a broken photo to everyone else (your phone still has the good copy).\n\nopen the pin and tap "repair photos" — one tap, keeps all felts and comments.`
+    );
+    return NextResponse.json({ ok: true, sent: sent ? emails.length : 0 });
+  }
+
+  if (b.action === "scan-photos") {    // pre-fix truncation cut covers at exactly 150k (client) / 200k (server) chars.
     // intact compressed photos land anywhere below — exact hits are near-certain truncations.
     const { data, error } = await sb.from("memories").select("id,handle,line,created_at,image").order("created_at", { ascending: false }).limit(200);
     if (error) return NextResponse.json({ error: usingServiceRole ? "scan failed" : "scan failed — set SUPABASE_SERVICE_ROLE_KEY", usingServiceRole }, { status: 500 });
