@@ -29,7 +29,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       center: [18, 14],
       zoom: 1.6,
       pitch: 0,
-      bearing: -8,
+      bearing: 0,
       antialias: true,
       projection: { name: "globe" } as any,
       attributionControl: false as any,
@@ -38,7 +38,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       crossSourceCollisions: false as any,
     });
     mapRef.current = map;
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch:true }), "bottom-right");
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch:false }), "bottom-right");
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-left");
     // suppress noisy zoom-level warnings (still zooms, just no tile)
     map.on("error", (e:any)=>{ const m = String(e?.error?.message || e?.message || ""); if(/zoom|not supported|terrain|dem/i.test(m)) (e as any).preventDefault?.(); });
@@ -125,48 +125,16 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
           }
         }catch{}
         try{ map.setFog({ color: "rgb(220, 230, 245)", "high-color": "rgb(200, 215, 240)", "horizon-blend": 0.02, "space-color": "rgb(0, 0, 0)", "star-intensity": 0.04, range: [0.5, 10] } as any); }catch{}
-        try{
-          if(map.getLayer("3d-buildings")){
-            map.setPaintProperty("3d-buildings", "fill-extrusion-opacity", 0.42);
-            map.setPaintProperty("3d-buildings", "fill-extrusion-color", "#2a2a2e");
-          }
-          const layer = map.getLayer("shrine-pillars") as any;
-          if(layer?.group){
-            layer.group.children.forEach((m:any, i:number)=>{
-              if(m.material){
-                m.material.emissiveIntensity = i%2===0?0.48:0.92;
-                m.material.opacity = 0.96;
-              }
-            });
-          }
-        }catch{}
       };
       updateLights();
       const lightInt = setInterval(updateLights, 60000);
       (map as any)._lightInt = lightInt;
-      // night shade — where it's night (behind buildings, above satellite) — must be before 3d-buildings so buildings stay lit
+      // night shade — where it's night (above satellite)
       const layers = map.getStyle().layers;
       const labelLayer = layers.find(l=> l.type==="symbol" && (l.layout as any)?.["text-field"])?.id;
       if(!map.getSource("night-shade")){
         map.addSource("night-shade", { type:"geojson", data:{ type:"FeatureCollection", features:[] } } as any);
         map.addLayer({ id:"night-shade", type:"fill", source:"night-shade", paint:{ "fill-color":"#0a0a1a", "fill-opacity": 0.22 } } as any, labelLayer);
-      }
-      // 3D buildings — Mapbox fill-extrusion
-      if(!map.getLayer("3d-buildings")){
-        map.addLayer({
-          id:"3d-buildings",
-          source:"composite",
-          "source-layer":"building",
-          filter:["==", "extrude", "true"],
-          type:"fill-extrusion",
-          minzoom:14,
-          paint:{
-            "fill-extrusion-color":"#1a1a1f",
-            "fill-extrusion-height":["get","height"],
-            "fill-extrusion-base":["get","min_height"],
-            "fill-extrusion-opacity":0.55,
-          }
-        } as any, labelLayer);
       }
       if(!map.getSource("night-shade")){
         map.addSource("night-shade", { type:"geojson", data:{ type:"FeatureCollection", features:[] } } as any);
@@ -270,65 +238,6 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
         }catch{}
       }, 180);
       (map as any)._dashAnim = dashAnim;
-
-      // Three.js pillars — prefetched while map boots, applied the instant style loads
-      import(/* webpackPrefetch: true */ "three").then(THREE => {
-      const customLayer = {
-        id: "shrine-pillars",
-        type: "custom" as const,
-        renderingMode: "3d" as const,
-        onAdd(map:any, gl:any){
-          this.scene = new THREE.Scene();
-          this.camera = new THREE.Camera();
-          this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias:true, alpha:true });
-          this.renderer.autoClear = false;
-          // lights
-          const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-          dir.position.set(0, -70, 100).normalize();
-          this.scene.add(dir);
-          this.scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-          // pillars group
-          this.group = new THREE.Group();
-          this.scene.add(this.group);
-          this.pillars = new Map();
-        },
-        render(gl:any, matrix:number[]){
-          const m = new THREE.Matrix4().fromArray(matrix);
-          (this.camera as any).projectionMatrix = m;
-          this.renderer.resetState();
-          this.renderer.render(this.scene as any, this.camera as any);
-          (map as any).triggerRepaint();
-        }
-      } as any;
-
-      if(!map.getLayer("shrine-pillars")){
-        map.addLayer(customLayer);
-      }
-
-      // helper to sync pillars
-      const syncPillars = ()=>{
-        const layer = map.getLayer("shrine-pillars") as any;
-        if(!layer?.group) return;
-        // clear
-        while(layer.group.children.length) layer.group.remove(layer.group.children[0]);
-        // limit pillars to 80 for perf (30 per city would be 500+ meshes heavy)
-        shrines.slice(0,80).forEach(s=>{
-          const h = 80 + (s.id.charCodeAt(2)%5)*24;
-          const geo = new THREE.BoxGeometry(28, 28, h);
-          const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff3b30, emissiveIntensity: 0.35, transparent:true, opacity:0.95 });
-          const mesh = new THREE.Mesh(geo, mat);
-          const merc = (mapboxgl as any).MercatorCoordinate.fromLngLat([s.lng, s.lat], 0);
-          mesh.position.set(merc.x, merc.y, h/2 / 100000);
-          const cap = new THREE.Mesh(new THREE.BoxGeometry(30,30,6), new THREE.MeshStandardMaterial({color:0xff3b30, emissive:0xff3b30, emissiveIntensity:1}));
-          cap.position.set(merc.x, merc.y, (h+3)/100000);
-          layer.group.add(mesh);
-          layer.group.add(cap);
-        });
-      };
-      // initial + on shrines change
-      setTimeout(syncPillars, 500);
-      (map as any)._syncPillars = syncPillars;
-      }).catch(()=>{});
     });
 
     return ()=> { const a=(map as any)._cloudAnim; if(a) clearInterval(a); const b=(map as any)._lightInt; if(b) clearInterval(b); const d=(map as any)._dashAnim; if(d) clearInterval(d); map.remove(); mapRef.current=null; };
@@ -360,11 +269,11 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       const s = shrines.find(x=> x.id===selectedId);
       if(!s) return;
       if(halo) halo.setData({ type:"FeatureCollection", features:[{ type:"Feature", geometry:{ type:"Point", coordinates:[s.lng, s.lat] }, properties:{} }] } as any);
-      map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:55, bearing:(Math.random()-0.5)*30, duration:2400, essential:true});
+      map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:0, bearing:0, duration:2400, essential:true});
       prevSelectedRef.current = selectedId;
     } else if(prevSelectedRef.current){
       if(halo) halo.setData({ type:"FeatureCollection", features:[] } as any);
-      map.flyTo({center:[18, 14], zoom:1.8, pitch:52, bearing:-8, duration:1800, essential:true});
+      map.flyTo({center:[18, 14], zoom:1.8, pitch:0, bearing:0, duration:1800, essential:true});
       prevSelectedRef.current = null;
     }
   },[selectedId, shrines]);
@@ -485,7 +394,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       map.on("click", "unclustered-point", (e:any)=>{
         setTapPop(null);        const f = e.features?.[0]; if(!f) return;
         const s = shrines.find(x=> x.id===f.properties.id);
-        if(s){ onSelectRef.current?.(s); onHoverRef.current?.(s.id); map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:55, bearing:(Math.random()-0.5)*30, duration:2400, essential:true}); }
+        if(s){ onSelectRef.current?.(s); onHoverRef.current?.(s.id); map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:0, bearing:0, duration:2400, essential:true}); }
       });
       map.on("mouseenter", "clusters", ()=> map.getCanvas().style.cursor="pointer");
       map.on("mouseleave", "clusters", ()=> map.getCanvas().style.cursor="");
@@ -502,7 +411,6 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       const existing = (map as any)._shrineMarkers as any[] | undefined;
       existing?.forEach((m:any)=> m.remove());
       (map as any)._shrineMarkers = [];
-      (map as any)._syncPillars?.();
       (map as any)._drawConnections?.();
     };
     // always call the LATEST addMarkers (never a stale closure off first load)
@@ -533,7 +441,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
     const map = mapRef.current; if(!map) return;
     navigator.geolocation.getCurrentPosition(pos=>{
       setLocModal(null);
-      map.flyTo({center:[pos.coords.longitude, pos.coords.latitude], zoom:14, pitch:60, duration:1800, essential:true});
+      map.flyTo({center:[pos.coords.longitude, pos.coords.latitude], zoom:14, pitch:0, duration:1800, essential:true});
     }, (err)=> {
       // iPhones silently block until allowed in settings — coach instead of failing quiet
       if(err.code===1 || isIOS()) setLocModal({ blocked: true });
@@ -547,7 +455,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
   };
   const resetView = ()=>{
     const map = mapRef.current; if(!map) return;
-    map.flyTo({center:[18,14], zoom:1.6, pitch:0, bearing:-8, duration:1600, essential:true});
+    map.flyTo({center:[18,14], zoom:1.6, pitch:0, bearing:0, duration:1600, essential:true});
   };
   // map search — find the area, fly there, then tap the exact spot
   function searchMap(q:string){

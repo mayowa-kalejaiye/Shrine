@@ -613,7 +613,7 @@ export default function ShrineFable(){  const [shrines, setShrines] = useState<S
         {/* bottom bar — alive, clears mobile FABs */}
         <div className="absolute bottom-20 sm:bottom-6 left-3 right-3 sm:left-6 sm:right-auto flex flex-wrap gap-2 z-10 pointer-events-none">
           <span suppressHydrationWarning className="font-[family-name:var(--font-grotesk)] text-[11px] sm:text-xs lowercase tracking-[0.14em] bg-black/70 backdrop-blur-xl border border-white/15 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live • <LiveClock /><span className="hidden min-[400px]:inline"> • 3d • weather</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live • <LiveClock /><span className="hidden min-[400px]:inline"> • satellite • weather</span>
           </span>
           <span className="hidden sm:inline-flex font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-white text-black px-3 py-2 rounded-full">satellite • streets • weather alive</span>
         </div>
