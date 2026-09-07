@@ -92,3 +92,47 @@ export async function DELETE(req: Request) {
   if (error) return NextResponse.json({ error: "delete failed" }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
+
+// PUT { memory_id, handle, line, created_at? } — owners edit line/date. 20/hr/IP.
+// Needs the service key: anon RLS has no update policy (fails closed without it).
+export async function PUT(req: Request) {
+  const ip = clientIp(req);
+  const rl = rateLimit(`editmem:${ip}`, 20, 3600000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "too many edits — slow down" },
+      { status: 429, headers: rateLimitHeaders(rl.remaining, 20, rl.resetMs) }
+    );
+  }
+  if (!URL || !SERVICE) return NextResponse.json({ error: "edit unavailable right now" }, { status: 503 });
+
+  let b: any = {};
+  try { b = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
+  const handle = cleanHandle(b.handle);
+  if (!handle || RESERVED.includes(handle) || handle === "you")
+    return NextResponse.json({ error: "invalid handle" }, { status: 400 });
+  if (typeof b.memory_id !== "string" || !b.memory_id)
+    return NextResponse.json({ error: "invalid memory" }, { status: 400 });
+  if (typeof b.line !== "string" || !b.line.trim() || b.line.length > 80)
+    return NextResponse.json({ error: "invalid line" }, { status: 400 });
+  let when: string | undefined;
+  if (b.created_at !== undefined) {
+    if (typeof b.created_at !== "number" || b.created_at < 946684800000 || b.created_at > Date.now() + 86400000)
+      return NextResponse.json({ error: "invalid date" }, { status: 400 });
+    when = new Date(b.created_at).toISOString();
+  }
+  if (await handleLockedByOther(handle))
+    return NextResponse.json({ error: "that @ is locked to another account" }, { status: 403 });
+
+  const admin = createClient(URL, SERVICE);
+  const { data: mem } = await admin.from("memories").select("handle").eq("id", b.memory_id).single();
+  if (!mem) return NextResponse.json({ error: "already gone" }, { status: 404 });
+  if ((mem as any).handle !== handle)
+    return NextResponse.json({ error: "not yours to edit" }, { status: 403 });
+
+  const patch: any = { line: b.line.toLowerCase().slice(0, 80) };
+  if (when) patch.created_at = when;
+  const { error } = await admin.from("memories").update(patch).eq("id", b.memory_id);
+  if (error) return NextResponse.json({ error: "edit failed" }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

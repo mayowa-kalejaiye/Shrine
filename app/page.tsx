@@ -373,12 +373,21 @@ export default function ShrineFable(){
   }
   function saveEdit(){
     if(!selected || !editLine.trim()) return;
-    const when = editDate ? new Date(editDate + "T12:00:00").getTime() : selected.createdAt;
+    // keep the original timestamp unless the date actually changed — no phantom moves
+    const origDay = new Date(selected.createdAt).toISOString().slice(0,10);
+    const when = editDate && editDate!==origDay ? new Date(editDate + "T12:00:00").getTime() : selected.createdAt;
     const updated = { ...selected, line: editLine.toLowerCase(), createdAt: when };
-    setShrines(prev=> prev.map(x=> x.id===selected.id ? updated : x));
-    setSelected(updated);
-    setEditing(false);
-    toast("memory updated", { description: "saved on your phone" });
+    const applyLocal = ()=> { setShrines(prev=> prev.map(x=> x.id===selected.id ? updated : x)); setSelected(updated); setEditing(false); };
+    (async ()=>{
+      try{
+        const res = await fetch("/api/memories", { method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: selected.id, handle, line: updated.line, created_at: when }) });
+        if(res.status===403){ toast("not yours to edit"); return; }
+        if(res.status===503){ applyLocal(); toast("memory updated", { description: "saved on your phone" }); return; }
+        if(!res.ok){ applyLocal(); toast("memory updated", { description: "saved on your phone — sync failed" }); return; }
+        applyLocal();
+        toast("memory updated");
+      }catch{ applyLocal(); toast("memory updated", { description: "saved on your phone — sync failed" }); }
+    })();
   }
   // anniversary trigger
   useEffect(()=>{
