@@ -134,6 +134,20 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "invalid date" }, { status: 400 });
     when = new Date(b.created_at).toISOString();
   }
+  // optional photo heal: re-upload intact images for a pre-fix truncated pin
+  let imgs: string[] | undefined;
+  if (b.images !== undefined || b.image !== undefined) {
+    const arr: string[] = Array.isArray(b.images) ? b.images.slice(0, 3) : [];
+    for (const p of arr) {
+      if (typeof p !== "string" || !p.startsWith("data:image/") || p.length > 200_000)
+        return NextResponse.json({ error: "photos only" }, { status: 400 });
+    }
+    if (typeof b.image === "string" && b.image) {
+      if (!b.image.startsWith("data:image/") || b.image.length > 200_000)
+        return NextResponse.json({ error: "photos only" }, { status: 400 });
+    }
+    imgs = arr;
+  }
   if (await handleLockedByOther(handle))
     return NextResponse.json({ error: "that @ is locked to another account" }, { status: 403 });
 
@@ -145,6 +159,11 @@ export async function PUT(req: Request) {
 
   const patch: any = { line: b.line.toLowerCase().slice(0, 80) };
   if (when) patch.created_at = when;
+  if (imgs !== undefined && imgs.length) {
+    patch.images = imgs;
+    if (typeof b.image === "string" && b.image) patch.image = b.image;
+    else patch.image = imgs[0];
+  }
   const { error } = await admin.from("memories").update(patch).eq("id", b.memory_id);
   if (error) return NextResponse.json({ error: "edit failed" }, { status: 500 });
   return NextResponse.json({ ok: true });

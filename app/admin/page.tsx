@@ -27,6 +27,8 @@ export default function Admin() {
   const [reports, setReports] = useState<Report[]>([]);
   const [mems, setMems] = useState<Record<string, Mem>>({});
   const [stats, setStats] = useState<Stats | null>(null);
+  const [scan, setScan] = useState<{ suspects: { id: string; handle: string; line: string; created_at: string }[]; scanned: number } | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [noService, setNoService] = useState(false);
 
@@ -67,6 +69,15 @@ export default function Admin() {
     if (!j) return;
     toast("comment deleted");
     load();
+  }
+
+  async function scanPhotos() {
+    setScanning(true);
+    const j = await call("scan-photos");
+    setScanning(false);
+    if (!j) return;
+    setScan(j);
+    toast(j.suspects.length ? `${j.suspects.length} suspect pin(s)` : "all clear", { description: `scanned ${j.scanned}` });
   }
 
   const byMem = new Map<string, Report[]>();
@@ -177,6 +188,23 @@ export default function Admin() {
                 </div>
               </Card>
             </div>
+            <Card className="bg-white/[0.04] border-white/10 rounded-2xl p-4">
+              <div className="flex items-center gap-2">
+                <div className="text-xs lowercase tracking-[0.14em] text-white/40">photo repair — truncated covers</div>
+                <button onClick={scanPhotos} disabled={scanning} className="ml-auto rounded-full bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs lowercase disabled:opacity-40">{scanning ? "scanning..." : "scan"}</button>
+              </div>
+              {scan && (
+                <div className="mt-2 space-y-1.5">
+                  {scan.suspects.length === 0 && <p className="text-xs lowercase text-white/30">all clear across last {scan.scanned} pins.</p>}
+                  {scan.suspects.map(s => (
+                    <div key={s.id} className="flex items-center gap-2 text-sm lowercase">
+                      <span className="truncate">“{s.line.slice(0, 40)}…” <span className="text-white/40">@{s.handle}</span></span>
+                      <span className="ml-auto text-xs text-amber-300/80 shrink-0">tell @{s.handle} to open it → repair photos</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
             <Card className="bg-white/[0.04] border-white/10 rounded-2xl p-4">
               <div className="text-xs lowercase tracking-[0.14em] text-white/40">latest comments</div>
               <div className="mt-2 space-y-1.5">

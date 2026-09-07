@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SEED_SHRINES, Shrine, ShrineComment } from "@/lib/shrine-data";
 import { supabase } from "@/lib/supabase";
-import { fileToCover } from "@/lib/image";
+import { fileToCover, compressDataUrl } from "@/lib/image";
 import { createClient as createBrowser } from "@/lib/supabase-client";
 import DatePicker from "@/components/DatePicker";
 import { MapPinIcon, ImageAdd01Icon, ViewIcon, Share01Icon, Download01Icon, PlusSignIcon, Location01Icon, ArrowRight01Icon, ArrowUpRight01Icon, FavouriteIcon, ArrowLeft01Icon } from "hugeicons-react";
@@ -411,6 +411,38 @@ export default function ShrineFable(){
       toast("memory deleted", { description: "gone from the map forever" });
     }catch{ toast("couldn't delete — try again"); }
   }
+  // repair button only surfaces when this pin's server copy is actually truncated
+  // (server cover shorter than the intact local copy) — no clutter otherwise.
+  const [needsRepair, setNeedsRepair] = useState(false);
+  useEffect(()=>{
+    setNeedsRepair(false);
+    if(!selected || !supabase || selected.handle!==handle || handle==="you") return;
+    let cancelled = false;
+    (async ()=>{
+      try{
+        const { data } = await supabase.from("memories").select("image").eq("id", selected.id).single();
+        const serverLen = String((data as any)?.image || "").length;
+        const localLen = String(selected.image || "").length;
+        if(!cancelled && serverLen > 0 && localLen - serverLen > 1000) setNeedsRepair(true);
+      }catch{}
+    })();
+    return ()=> { cancelled = true; };
+  },[selected?.id, handle]);
+  async function repairPhotos(){    if(!selected || selected.handle!==handle || handle==="you") return;
+    const local = (selected.images?.length ? selected.images : [selected.image]).slice(0,3);
+    toast("repairing photos...");
+    try{
+      const fixed: string[] = [];
+      for (const u of local) fixed.push(await compressDataUrl(u));
+      const res = await fetch("/api/memories", { method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: selected.id, handle, line: selected.line, images: fixed, image: fixed[0] }) });
+      if(res.status===403){ toast("not yours to repair"); return; }
+      if(!res.ok){ toast("couldn't repair — try again"); return; }
+      const updated = { ...selected, image: fixed[0], images: fixed };
+      setShrines(prev=> prev.map(x=> x.id===selected.id ? updated : x));
+      setSelected(updated);
+      toast("photos repaired", { description: "everyone can see them now" });
+    }catch{ toast("couldn't repair — try again"); }
+  }
   function saveEdit(){
     if(!selected || !editLine.trim()) return;
     // keep the original timestamp unless the date actually changed — no phantom moves
@@ -647,6 +679,7 @@ export default function ShrineFable(){
                     {selected.handle===handle && selected.handle!=="you" && (
                       <>
                         <button onClick={()=> { setEditing(true); setEditLine(selected.line); setEditDate(new Date(selected.createdAt).toISOString().slice(0,10)); }} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">edit</button>
+                        {needsRepair && <button onClick={repairPhotos} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-amber-300/70 hover:text-amber-300 underline underline-offset-2">repair photos</button>}
                         <button onClick={deleteMemory} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-[#ff3b30]/60 hover:text-[#ff3b30] underline underline-offset-2">delete</button>
                       </>
                     )}

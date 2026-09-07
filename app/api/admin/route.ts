@@ -79,8 +79,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  if (b.action === "stats") {
-    // Extensive tracking from existing tables — no new infra. Anon key reads what's
+  if (b.action === "scan-photos") {
+    // pre-fix truncation cut covers at exactly 150k (client) / 200k (server) chars.
+    // intact compressed photos land anywhere below — exact hits are near-certain truncations.
+    const { data, error } = await sb.from("memories").select("id,handle,line,created_at,image").order("created_at", { ascending: false }).limit(200);
+    if (error) return NextResponse.json({ error: usingServiceRole ? "scan failed" : "scan failed — set SUPABASE_SERVICE_ROLE_KEY", usingServiceRole }, { status: 500 });
+    const suspects = (((data || []) as any[])
+      .filter((r) => {
+        const n = String(r.image || "").length;
+        return n === 150000 || n === 200000;
+      })
+      .map((r) => ({ id: r.id, handle: r.handle, line: String(r.line || "").slice(0, 60), created_at: r.created_at })));
+    return NextResponse.json({ ok: true, suspects, scanned: (data || []).length });
+  }
+
+  if (b.action === "stats") {    // Extensive tracking from existing tables — no new infra. Anon key reads what's
     // RLS-open (memories/comments/felt/users); reports/alerts need the service key.
     const day = 86400000;
     const since = new Date(Date.now() - 14 * day).toISOString();
