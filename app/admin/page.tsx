@@ -84,7 +84,7 @@ export default function Admin() {
       <Toaster position="top-center" richColors theme="dark" />
       <div className="max-w-[760px] mx-auto">
         <h1 className="font-serif text-2xl lowercase">shrine admin</h1>
-        <p className="text-sm text-white/40 lowercase mt-1">tracking + report queue + kill switch. keep this url private.</p>
+        <p className="text-sm text-white/40 lowercase mt-1">{loaded ? "tracking + report queue + kill switch. keep this url private." : "restricted area."}</p>
         <div className="mt-4 flex gap-2">
           <Input value={secret} onChange={e => setSecret(e.target.value)} onKeyDown={e => { if (e.key === "Enter") load(); }} type="password" placeholder="admin secret" className="flex-1 bg-black/40 border-white/10 rounded-xl h-11" />
           <Button onClick={load} className="bg-white text-black rounded-full h-11 px-6 lowercase">unlock</Button>

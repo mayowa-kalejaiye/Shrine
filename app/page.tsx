@@ -55,7 +55,7 @@ export default function ShrineFable(){
       if(res.status===429){ toast("too many reports — try again later"); return; }
       if(!res.ok){ toast("report failed — try again"); return; }
       setReportSent(true);
-      toast("reported — thanks", { description: "3+ reports auto-hides it. kill switch: /admin" });
+      toast("reported — thanks", { description: "our team will take a look." });
     }catch{ toast("report failed — try again"); }
   }
   const [traceHandle, setTraceHandle] = useState<string|null>(null);
@@ -134,7 +134,7 @@ export default function ShrineFable(){
     });
     try{
       const res = await fetch("/api/felt", { method: nowFelt ? "POST" : "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: selected.id, handle: h }) });
-      if(res.status===429) toast("too many felts — slow down", { description: "felt saved locally, sync paused" });
+      if(res.status===429) toast("too many felts — slow down", { description: "saved on your phone for now" });
     }catch{}
   }
   useEffect(()=>{
@@ -181,7 +181,7 @@ export default function ShrineFable(){
     try{
       const res = await fetch("/api/alerts", { method: alertsOn ? "DELETE" : "POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle }) });
       if(res.status===401){ toast("sign in first"); return; }
-      if(res.status===503){ toast("alerts not configured yet", { description: "email sender missing — check back soon" }); return; }
+      if(res.status===503){ toast("alerts aren't available yet", { description: "check back soon" }); return; }
       if(!res.ok){ toast("try again"); return; }
       setAlertsOn(!alertsOn);
       toast(!alertsOn ? `alerts on for @${handle}` : `alerts off for @${handle}`);
@@ -297,7 +297,7 @@ export default function ShrineFable(){
     // persist via rate-limited API (8 pins / 10 min / IP) — falls back to local-only on failure
     try{
       const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: capMedia(cover), images: (s.images||[]).map(capMedia) }) });
-      if(res.status===429) toast("pin saved locally — server says slow down", { description: "too many pins in 10 min, sync paused" });
+      if(res.status===429) toast("pin saved on your phone", { description: "you're pinning too fast — wait a bit" });
     }catch{}
     // nearby trigger — check within 20km
     const nearby = shrines.filter(x=> haversine({lat:picked.lat,lng:picked.lng},{lat:x.lat,lng:x.lng})<20);
@@ -318,7 +318,7 @@ export default function ShrineFable(){
     setCommentInput("");
     try{
       const res = await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: c.memory_id, handle: c.handle, text: c.text }) });
-      if(res.status===429) toast("comment saved locally — server says slow down", { description: "too many comments, sync paused" });
+      if(res.status===429) toast("comment saved on your phone", { description: "you're replying too fast — wait a bit" });
     }catch{
       try{ const k="shrine_comments"; const all=JSON.parse(localStorage.getItem(k)||"[]"); localStorage.setItem(k, JSON.stringify([c, ...all].slice(0,500))); }catch{}
     }
@@ -330,7 +330,7 @@ export default function ShrineFable(){
     setShrines(prev=> prev.map(x=> x.id===selected.id ? updated : x));
     setSelected(updated);
     setEditing(false);
-    toast("memory updated", { description: "line + date saved locally — server edit needs login, coming" });
+    toast("memory updated", { description: "saved on your phone" });
   }
   // anniversary trigger
   useEffect(()=>{
