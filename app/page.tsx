@@ -360,14 +360,26 @@ export default function ShrineFable(){
     if(!selected || selected.handle!==handle || handle==="you") return;
     if(!confirm(`delete "${selected.line.slice(0,40)}..." forever? this can't be undone.`)) return;
     const id = selected.id;
+    const removeEverywhere = ()=>{
+      setShrines(prev=> prev.filter(x=> x.id!==id));
+      // scrub localStorage now — don't wait on the persistence effect
+      try{
+        const raw = localStorage.getItem("shrine_pins");
+        if(raw){
+          const all = JSON.parse(raw);
+          localStorage.setItem("shrine_pins", JSON.stringify(all.filter((x:any)=> x.id!==id)));
+        }
+      }catch{}
+      setSelected(null);
+    };
     try{
       const res = await fetch("/api/memories", { method:"DELETE", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: id, handle }) });
       if(res.status===403){ toast("not yours to delete"); return; }
       if(res.status===503){ toast("delete unavailable right now"); return; }
       if(res.status===429){ toast("too many deletes — slow down"); return; }
+      if(res.status===404){ removeEverywhere(); toast("memory deleted", { description: "gone from the map forever" }); return; }
       if(!res.ok){ toast("couldn't delete — try again"); return; }
-      setShrines(prev=> prev.filter(x=> x.id!==id));
-      setSelected(null);
+      removeEverywhere();
       toast("memory deleted", { description: "gone from the map forever" });
     }catch{ toast("couldn't delete — try again"); }
   }
