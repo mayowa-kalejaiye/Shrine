@@ -356,6 +356,21 @@ export default function ShrineFable(){
       try{ const k="shrine_comments"; const all=JSON.parse(localStorage.getItem(k)||"[]"); localStorage.setItem(k, JSON.stringify([c, ...all].slice(0,500))); }catch{}
     }
   }
+  async function deleteMemory(){
+    if(!selected || selected.handle!==handle || handle==="you") return;
+    if(!confirm(`delete "${selected.line.slice(0,40)}..." forever? this can't be undone.`)) return;
+    const id = selected.id;
+    try{
+      const res = await fetch("/api/memories", { method:"DELETE", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: id, handle }) });
+      if(res.status===403){ toast("not yours to delete"); return; }
+      if(res.status===503){ toast("delete unavailable right now"); return; }
+      if(res.status===429){ toast("too many deletes — slow down"); return; }
+      if(!res.ok){ toast("couldn't delete — try again"); return; }
+      setShrines(prev=> prev.filter(x=> x.id!==id));
+      setSelected(null);
+      toast("memory deleted", { description: "gone from the map forever" });
+    }catch{ toast("couldn't delete — try again"); }
+  }
   function saveEdit(){
     if(!selected || !editLine.trim()) return;
     const when = editDate ? new Date(editDate + "T12:00:00").getTime() : selected.createdAt;
@@ -581,7 +596,10 @@ export default function ShrineFable(){
                     <button onClick={toggleFelt} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-[family-name:var(--font-grotesk)] text-xs lowercase border transition active:scale-95 ${felt[selected.id]?"bg-[#ff3b30]/15 border-[#ff3b30]/30 text-[#ff3b30]":"bg-white/[0.06] border-white/10 text-white/70 hover:text-white"}`}><FavouriteIcon size={13}/> {felt[selected.id]?"felt ✓":"i felt this"}{feltCount>0 && <span className="opacity-70">• {feltCount}</span>}</button>
                     <button onClick={()=> setShareOpen(true)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 bg-white text-black font-[family-name:var(--font-grotesk)] text-xs lowercase font-medium active:scale-95"><Share01Icon size={13}/> share</button>
                     {selected.handle===handle && selected.handle!=="you" && (
-                      <button onClick={()=> { setEditing(true); setEditLine(selected.line); setEditDate(new Date(selected.createdAt).toISOString().slice(0,10)); }} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">edit</button>
+                      <>
+                        <button onClick={()=> { setEditing(true); setEditLine(selected.line); setEditDate(new Date(selected.createdAt).toISOString().slice(0,10)); }} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 hover:text-white underline underline-offset-2">edit</button>
+                        <button onClick={deleteMemory} className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-[#ff3b30]/60 hover:text-[#ff3b30] underline underline-offset-2">delete</button>
+                      </>
                     )}
                   </div>
                   {/* report — day-one moderation: 3+ reports auto-hides, /admin is the kill switch */}

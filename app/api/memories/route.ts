@@ -6,6 +6,7 @@ import { handleLockedByOther } from "@/lib/auth-session";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 // POST memory pin — 8 pins / 10 min / IP. Photos only (videos are off).
 export async function POST(req: Request) {
@@ -53,4 +54,41 @@ export async function POST(req: Request) {
     .single();
   if (error) return NextResponse.json({ error: "pin failed" }, { status: 500 });
   return NextResponse.json({ ok: true, id: data.id });
+}
+
+// DELETE { memory_id, handle } — owners delete their own pins (+ felt/comments/reports).
+// 20/hr/IP. Needs the service key: anon RLS has no delete policy (fails closed without it).
+export async function DELETE(req: Request) {
+  const ip = clientIp(req);
+  const rl = rateLimit(`delmem:${ip}`, 20, 3600000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "too many deletes — slow down" },
+      { status: 429, headers: rateLimitHeaders(rl.remaining, 20, rl.resetMs) }
+    );
+  }
+  if (!URL || !SERVICE) return NextResponse.json({ error: "delete unavailable right now" }, { status: 503 });
+
+  let b: any = {};
+  try { b = await req.json(); } catch { return NextResponse.json({ error: "bad json" }, { status: 400 }); }
+  const handle = cleanHandle(b.handle);
+  if (!handle || RESERVED.includes(handle) || handle === "you")
+    return NextResponse.json({ error: "invalid handle" }, { status: 400 });
+  if (typeof b.memory_id !== "string" || !b.memory_id)
+    return NextResponse.json({ error: "invalid memory" }, { status: 400 });
+  if (await handleLockedByOther(handle))
+    return NextResponse.json({ error: "that @ is locked to another account" }, { status: 403 });
+
+  const admin = createClient(URL, SERVICE);
+  const { data: mem } = await admin.from("memories").select("handle").eq("id", b.memory_id).single();
+  if (!mem) return NextResponse.json({ error: "already gone" }, { status: 404 });
+  if ((mem as any).handle !== handle)
+    return NextResponse.json({ error: "not yours to delete" }, { status: 403 });
+
+  await admin.from("reports").delete().eq("memory_id", b.memory_id);
+  await admin.from("felt").delete().eq("memory_id", b.memory_id);
+  await admin.from("comments").delete().eq("memory_id", b.memory_id);
+  const { error } = await admin.from("memories").delete().eq("id", b.memory_id);
+  if (error) return NextResponse.json({ error: "delete failed" }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }
