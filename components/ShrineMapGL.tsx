@@ -7,12 +7,18 @@ import { Shrine, CITIES } from "@/lib/shrine-data";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, selectedId, traceHandle, picked }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null, picked?: {lat:number,lng:number} | null }){
+export default function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, selectedId, traceHandle, picked }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onPickConfirm?: ()=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null, picked?: {lat:number,lng:number} | null }){
   const traceRef = useRef(traceHandle); useEffect(()=>{ traceRef.current = traceHandle; },[traceHandle]);
+  // tap "+ pin" popup position (px in map container) — hidden on move/new tap
+  const [tapPop, setTapPop] = useState<{x:number,y:number} | null>(null);
+  // map search (find the area first, then tap the exact spot)
+  const [mapQ, setMapQ] = useState("");
+  const [mapRes, setMapRes] = useState<{display_name:string,lat:number,lng:number,name:string}[]>([]);
+  const mapTimer = useRef<any>(null);
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map|null>(null);
-  const onPickRef = useRef(onPick); const onSelectRef = useRef(onSelect); const onHoverRef = useRef(onHover);
-  useEffect(()=>{ onPickRef.current=onPick; },[onPick]);
+  const onPickRef = useRef(onPick); const onSelectRef = useRef(onSelect); const onHoverRef = useRef(onHover); const onPickConfirmRef = useRef(onPickConfirm);
+  useEffect(()=>{ onPickRef.current=onPick; onPickConfirmRef.current=onPickConfirm; },[onPick, onPickConfirm]);
   useEffect(()=>{ onSelectRef.current=onSelect; },[onSelect]);
   useEffect(()=>{ onHoverRef.current=onHover; },[onHover]);
 
@@ -42,7 +48,13 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
       const target = (e.originalEvent?.target as HTMLElement)?.closest?.(".shrine-marker, .mapboxgl-marker");
       if(target) return;
       onPickRef.current?.(e.lngLat.lat, e.lngLat.lng);
+      // "+ pin" popup swipes up from the tap point (modal opens pre-filled)
+      try{
+        const pt = map.project([e.lngLat.lng, e.lngLat.lat]);
+        setTapPop({ x: pt.x, y: pt.y });
+      }catch{}
     });
+    map.on("dragstart", ()=> setTapPop(null));
     // idle twirl — after 2.5s true idleness, world view only, never while reading
     let userInteracting = false;
     let spinPaused = true;
@@ -463,7 +475,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
         map.addLayer({ id:"selected-halo-ring", type:"circle", source:"selected-halo", paint:{ "circle-color":"transparent", "circle-radius":13, "circle-stroke-width":2.5, "circle-stroke-color":"#ffffff", "circle-opacity":0.95 } } as any);
       }
       map.on("click", "clusters", (e:any)=>{
-        const features = map.queryRenderedFeatures(e.point, { layers:["clusters"] });
+        setTapPop(null);        const features = map.queryRenderedFeatures(e.point, { layers:["clusters"] });
         if(!features.length || !features[0]) return;
         const clusterId = (features[0] as any).properties.cluster_id;
         (map.getSource("shrines") as any).getClusterExpansionZoom(clusterId, (err:any, zoom:number)=>{
@@ -472,7 +484,7 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
         });
       });
       map.on("click", "unclustered-point", (e:any)=>{
-        const f = e.features?.[0]; if(!f) return;
+        setTapPop(null);        const f = e.features?.[0]; if(!f) return;
         const s = shrines.find(x=> x.id===f.properties.id);
         if(s){ onSelectRef.current?.(s); onHoverRef.current?.(s.id); map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:55, bearing:(Math.random()-0.5)*30, duration:2400, essential:true}); }
       });
@@ -538,12 +550,56 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
     const map = mapRef.current; if(!map) return;
     map.flyTo({center:[18,14], zoom:1.6, pitch:0, bearing:-8, duration:1600, essential:true});
   };
+  // map search — find the area, fly there, then tap the exact spot
+  function searchMap(q:string){
+    setMapQ(q);
+    if(mapTimer.current) clearTimeout(mapTimer.current);
+    if(q.trim().length<2){ setMapRes([]); return; }
+    mapTimer.current = setTimeout(async ()=>{
+      try{
+        const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+        const d = await r.json();
+        if(!Array.isArray(d)){ setMapRes([]); return; }
+        setMapRes(d.map((x:any)=> ({ display_name:x.display_name, lat:parseFloat(x.lat), lng:parseFloat(x.lon), name:(x.name||String(x.display_name).split(",")[0]).toLowerCase().slice(0,40) })));
+      }catch{ setMapRes([]); }
+    },350);
+  }
+  function flyToPlace(r:{lat:number,lng:number}){
+    const map = mapRef.current; if(!map) return;
+    setMapQ(""); setMapRes([]);
+    setTapPop(null);
+    map.flyTo({center:[r.lng, r.lat], zoom:13, duration:1800, essential:true});
+  }
 
   return (
     <div className="relative h-full w-full bg-[#0f0f0f]">
       <div ref={ref} className="h-full w-full shrine-grade" />
       {/* cinematic grade + vignette */}
       <div className="pointer-events-none absolute inset-0" style={{background:"radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.42) 100%)"}} />
+      {/* map search — find the area first, then tap the exact spot to pin */}
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 w-[min(88%,340px)]">
+        <div className="flex items-center gap-2 bg-black/70 backdrop-blur-xl border border-white/15 rounded-full px-4 h-10">
+          <span className="text-white/40 text-sm shrink-0">⌕</span>
+          <input value={mapQ} onChange={e=> searchMap(e.target.value)} onKeyDown={e=> { if(e.key==="Escape"){ setMapQ(""); setMapRes([]); } }} placeholder="search a place, then tap the map..." className="flex-1 min-w-0 bg-transparent outline-none font-[family-name:var(--font-grotesk)] text-sm lowercase placeholder:text-white/30" />
+          {mapQ && <button aria-label="clear search" onClick={()=> { setMapQ(""); setMapRes([]); }} className="text-white/40 text-xs shrink-0">✕</button>}
+        </div>
+        {mapRes.length>0 && (
+          <div className="mt-1.5 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden max-h-[220px] overflow-y-auto">
+            {mapRes.map(r=>(
+              <button key={r.display_name} onClick={()=> flyToPlace(r)} className="w-full text-left px-4 py-2.5 hover:bg-white/10 font-[family-name:var(--font-grotesk)] text-xs lowercase border-b border-white/5 last:border-0">
+                <span className="text-white">{r.name}</span> <span className="text-white/40">— {r.display_name.slice(0,55)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* tap "+ pin" popup — swipes up from the tap point, opens the pin modal pre-filled */}
+      {tapPop && (
+        <div key={`${Math.round(tapPop.x)}-${Math.round(tapPop.y)}`} className="absolute z-10" style={{ left: tapPop.x, top: tapPop.y }}>
+          <style>{`@keyframes shrine-pop { from { opacity:0; transform:translate(-50%,-60%); } to { opacity:1; transform:translate(-50%,-135%); } }`}</style>
+          <button onClick={()=> { setTapPop(null); onPickConfirmRef.current?.(); }} className="text-white rounded-full h-10 px-5 font-[family-name:var(--font-grotesk)] lowercase text-sm font-medium bg-[#ff3b30] shadow-[0_12px_32px_rgba(255,59,48,0.5)] active:scale-95 whitespace-nowrap" style={{ transform:"translate(-50%,-135%)", animation:"shrine-pop .22s ease-out" }}>+ pin this spot</button>
+        </div>
+      )}
       {/* right-middle controls — ride the drawer edge when memory open */}
       <div className={`absolute top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2 transition-all duration-300 ${selectedId ? "right-3 sm:right-[444px]" : "right-3 sm:right-6"}`}>
         <button onClick={locateMe} title="locate me" className="w-9 h-9 rounded-full bg-black/70 backdrop-blur-xl border border-white/15 text-white grid place-items-center hover:bg-black/90 active:scale-95"><Location01Icon size={15}/></button>

@@ -537,7 +537,7 @@ export default function ShrineFable(){
       {/* FULLSCREEN MAP — true fullscreen, nav floats on map */}
       <section className="relative h-[100dvh] w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
-          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} picked={picked} onHover={()=>{}} onSelect={setSelected} onPick={(lat,lng)=> {
+          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} picked={picked} onHover={()=>{}} onSelect={setSelected} onPickConfirm={()=> setOpen(true)} onPick={(lat,lng)=> {
             const coords = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
             setPicked({lat, lng, label: coords});
             // upgrade raw coords to a real place name (search-then-tap flow)
