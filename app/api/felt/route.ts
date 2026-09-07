@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { rateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { RESERVED, cleanHandle } from "@/lib/handles";
 import { notifySubscribers } from "@/lib/notify";
+import { handleLockedByOther } from "@/lib/auth-session";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -34,6 +35,8 @@ async function felt(req: Request, add: boolean) {
     return NextResponse.json({ error: "invalid handle" }, { status: 400 });
   if (typeof b.memory_id !== "string" || !b.memory_id)
     return NextResponse.json({ error: "invalid memory" }, { status: 400 });
+  if (await handleLockedByOther(handle))
+    return NextResponse.json({ error: "that @ is locked to another account — sign in as them or pick another" }, { status: 403 });
 
   const sb = createClient(URL, ANON);
   if (add) {

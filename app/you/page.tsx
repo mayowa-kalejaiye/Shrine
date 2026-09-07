@@ -12,8 +12,9 @@ export default function YouPage(){
   const [my, setMy] = useState<Shrine[]>([]);
   const router = useRouter();
   useEffect(()=>{
+    const me = (localStorage.getItem("shrine_handle") || "you").toLowerCase();
     const s=localStorage.getItem("shrine_pins");
-    if(s){ try{ const all: Shrine[]=JSON.parse(s); setMy(all.filter(x=> x.handle==="you").sort((a,b)=> a.createdAt-b.createdAt)); }catch{} }
+    if(s){ try{ const all: Shrine[]=JSON.parse(s); setMy(all.filter(x=> x.handle===me).sort((a,b)=> a.createdAt-b.createdAt)); }catch{} }
   },[]);
   return (
     <div onClick={(e)=> { if(e.target===e.currentTarget) router.push("/"); }} className="min-h-screen bg-[#08080a] text-white">

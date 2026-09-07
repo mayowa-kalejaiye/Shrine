@@ -110,7 +110,13 @@ export default function ShrineFable(){
     if(!clean || RESERVED.includes(clean)) return false;
     try{
       const res = await fetch("/api/claim", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean }) });
-      if(res.status===409){ setModalTaken(true); toast(`@${clean} is taken`, { description: "pick another handle" }); return false; }
+      if(res.status===401){ toast("sign in to claim", { description: "one account per @ — google or magic link below" }); return false; }
+      if(res.status===409){
+        const j = await res.json().catch(()=> null);
+        const msg = String(j?.error || "taken");
+        if(msg !== "taken" && msg !== "reserved") { toast(msg); return false; }
+        setModalTaken(true); toast(`@${clean} is taken`, { description: "pick another handle" }); return false;
+      }
       if(res.status===429){ toast("too many claims — try again later"); return false; }
       if(!res.ok) return false;
     }catch{
@@ -135,6 +141,7 @@ export default function ShrineFable(){
     try{
       const res = await fetch("/api/felt", { method: nowFelt ? "POST" : "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: selected.id, handle: h }) });
       if(res.status===429) toast("too many felts — slow down", { description: "saved on your phone for now" });
+      else if(res.status===403) toast(`@${h} is locked`, { description: "that @ belongs to a signed-in account" });
     }catch{}
   }
   useEffect(()=>{
@@ -298,6 +305,7 @@ export default function ShrineFable(){
     try{
       const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: capMedia(cover), images: (s.images||[]).map(capMedia) }) });
       if(res.status===429) toast("pin saved on your phone", { description: "you're pinning too fast — wait a bit" });
+      else if(res.status===403) toast(`@${clean} is locked`, { description: "that @ belongs to a signed-in account" });
     }catch{}
     // nearby trigger — check within 20km
     const nearby = shrines.filter(x=> haversine({lat:picked.lat,lng:picked.lng},{lat:x.lat,lng:x.lng})<20);
@@ -319,6 +327,7 @@ export default function ShrineFable(){
     try{
       const res = await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ memory_id: c.memory_id, handle: c.handle, text: c.text }) });
       if(res.status===429) toast("comment saved on your phone", { description: "you're replying too fast — wait a bit" });
+      else if(res.status===403) toast(`@${clean} is locked`, { description: "that @ belongs to a signed-in account" });
     }catch{
       try{ const k="shrine_comments"; const all=JSON.parse(localStorage.getItem(k)||"[]"); localStorage.setItem(k, JSON.stringify([c, ...all].slice(0,500))); }catch{}
     }
@@ -341,7 +350,9 @@ export default function ShrineFable(){
     if(ann.length){ setTimeout(()=> toast(`anniversary • 1 week ago in ${ann[0].city}`, { description: `"${ann[0].line.slice(0,48)}..." — still there`, duration:6000}), 2500); }
   },[shrines.length]);
   // collection progress
-  const myShrines = shrines.filter(s=> s.handle==="you");
+  // your stuff = pins under YOUR claimed handle, not the "you" placeholder
+  const me = handle && handle!=="you" ? handle : "you";
+  const myShrines = shrines.filter(s=> s.handle===me);
   const citiesVisited = new Set(myShrines.map(s=> s.city)).size;
   const nightPins = myShrines.filter(s=> { const h=new Date(s.createdAt).getHours(); return h<6||h>19; }).length;
   const progressCities = Math.min(100, Math.round(citiesVisited/5*100));

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { rateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { RESERVED, cleanHandle } from "@/lib/handles";
 import { notifySubscribers } from "@/lib/notify";
+import { handleLockedByOther } from "@/lib/auth-session";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid memory" }, { status: 400 });
   if (typeof b.text !== "string" || !b.text.trim() || b.text.trim().length > 280)
     return NextResponse.json({ error: "invalid text" }, { status: 400 });
+  if (await handleLockedByOther(handle))
+    return NextResponse.json({ error: "that @ is locked to another account — sign in as them or pick another" }, { status: 403 });
 
   const sb = createClient(URL, ANON);
   const { data, error } = await sb

@@ -98,6 +98,9 @@ drop policy if exists "insert reports" on reports;
 create policy "insert reports" on reports for insert with check (true);
 -- NOTE: no select policy on reports — anon clients cannot list reporters.
 create index if not exists reports_memory_idx on reports(memory_id, created_at desc);
+-- 1 account per @ : handles link to exactly one auth user and vice versa.
+-- nullable so legacy pre-auth rows keep working; postgres treats nulls as distinct.
+alter table users add column if not exists auth_user_id uuid unique;
 -- alerts: felt/comment reply notifications. NO policies at all — service role only,
 -- via /api/alerts (inserts use the server-verified session email, so nobody can
 -- subscribe someone else's address and spam them through our sender).

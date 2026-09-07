@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { RESERVED, cleanHandle } from "@/lib/handles";
+import { handleLockedByOther } from "@/lib/auth-session";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid city" }, { status: 400 });
   if (typeof b.lat !== "number" || typeof b.lng !== "number" || Math.abs(b.lat) > 90 || Math.abs(b.lng) > 180)
     return NextResponse.json({ error: "invalid coords" }, { status: 400 });
+  // 1 account per @: reject pins under handles locked to another signed-in account
+  if (await handleLockedByOther(handle))
+    return NextResponse.json({ error: "that @ is locked to another account — sign in as them or pick another" }, { status: 403 });
 
   // base64 guard: photos ~150kb each, videos rejected (video pins are off)
   const imgs: string[] = Array.isArray(b.images) ? b.images.slice(0, 3) : [];
