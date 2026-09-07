@@ -79,5 +79,69 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (b.action === "stats") {
+    // Extensive tracking from existing tables — no new infra. Anon key reads what's
+    // RLS-open (memories/comments/felt/users); reports/alerts need the service key.
+    const day = 86400000;
+    const since = new Date(Date.now() - 14 * day).toISOString();
+    const counts: Record<string, number | null> = {};
+    for (const t of ["memories", "comments", "felt", "users", "reports", "alerts"]) {
+      const r = await sb.from(t).select("*", { count: "exact", head: true });
+      counts[t] = r.error ? null : (r.count ?? 0);
+    }
+    const hid = await sb.from("memories").select("*", { count: "exact", head: true }).eq("hidden", true);
+    // 14-day activity series
+    const series: { day: string; memories: number; comments: number; felt: number; reports: number }[] = [];
+    const buckets = new Map<string, { day: string; memories: number; comments: number; felt: number; reports: number }>();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * day).toISOString().slice(0, 10);
+      const o = { day: d, memories: 0, comments: 0, felt: 0, reports: 0 };
+      buckets.set(d, o);
+      series.push(o);
+    }
+    const bump = (rows: any[] | null | undefined, key: "memories" | "comments" | "felt" | "reports") => {
+      for (const r of rows || []) {
+        const o = buckets.get(String(r.created_at).slice(0, 10));
+        if (o) o[key]++;
+      }
+    };
+    const sm = await sb.from("memories").select("created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(5000);
+    bump(sm.data, "memories");
+    const sc = await sb.from("comments").select("created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(5000);
+    bump(sc.data, "comments");
+    const sf = await sb.from("felt").select("created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(5000);
+    bump(sf.data, "felt");
+    const sr = await sb.from("reports").select("created_at").gte("created_at", since).order("created_at", { ascending: false }).limit(2000);
+    bump(sr.data, "reports");
+    // top handles by recent pins
+    const pins = await sb.from("memories").select("handle").order("created_at", { ascending: false }).limit(3000);
+    const per = new Map<string, number>();
+    for (const p of ((pins.data || []) as any[])) per.set(p.handle, (per.get(p.handle) || 0) + 1);
+    const topHandles = [...per.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([handle, n]) => ({ handle, pins: n }));
+    // recent activity
+    const rm = await sb.from("memories").select("id,handle,city,line,hidden,created_at").order("created_at", { ascending: false }).limit(8);
+    const rc = await sb.from("comments").select("id,memory_id,handle,text,created_at").order("created_at", { ascending: false }).limit(8);
+    // open reports = reported memories neither hidden nor deleted
+    const reps = await sb.from("reports").select("memory_id").order("created_at", { ascending: false }).limit(200);
+    const repIds = [...new Set((((reps.data || []) as any[]).map((r) => r.memory_id)))];
+    let openReports: number | null = reps.error ? null : 0;
+    if (!reps.error && repIds.length) {
+      const { data: hm } = await sb.from("memories").select("id,hidden").in("id", repIds.slice(0, 60));
+      const state = new Map(((hm || []) as any[]).map((x) => [x.id, x.hidden]));
+      openReports = repIds.filter((id) => state.has(id) && !state.get(id)).length;
+    }
+    return NextResponse.json({
+      ok: true,
+      counts,
+      hidden: hid.error ? null : (hid.count ?? 0),
+      openReports,
+      series,
+      topHandles,
+      recentMemories: rm.data || [],
+      recentComments: rc.data || [],
+      usingServiceRole,
+    });
+  }
+
   return NextResponse.json({ error: "unknown action" }, { status: 400 });
 }

@@ -169,6 +169,24 @@ export default function ShrineFable(){
     })();
   },[selected?.id]);
   const [handle, setHandle] = useState("you");
+  // reply-loop alerts: email me when someone feels/comments on my handle.
+  // (declared after `handle` — the status check reads it.)
+  const [alertsOn, setAlertsOn] = useState(false);
+  useEffect(()=>{
+    if(!handleModal || !userEmail || !handle || handle==="you") return;
+    fetch(`/api/alerts?handle=${encodeURIComponent(handle)}`).then(r=> r.json()).then(j=> setAlertsOn(!!j.subscribed)).catch(()=>{});
+  },[handleModal, userEmail, handle]);
+  async function toggleAlerts(){
+    if(!userEmail || !handle || handle==="you"){ toast("sign in + claim a handle first"); return; }
+    try{
+      const res = await fetch("/api/alerts", { method: alertsOn ? "DELETE" : "POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle }) });
+      if(res.status===401){ toast("sign in first"); return; }
+      if(res.status===503){ toast("alerts not configured yet", { description: "email sender missing — check back soon" }); return; }
+      if(!res.ok){ toast("try again"); return; }
+      setAlertsOn(!alertsOn);
+      toast(!alertsOn ? `alerts on for @${handle}` : `alerts off for @${handle}`);
+    }catch{ toast("try again"); }
+  }
   const [handleTaken, setHandleTaken] = useState(false);
   const [searchHandle, setSearchHandle] = useState("");
   const [memDate, setMemDate] = useState("");
@@ -849,10 +867,19 @@ export default function ShrineFable(){
               <span className="flex-1 h-px bg-white/10" />
             </div>
             {userEmail ? (
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3.5 h-11">
-                <span className="font-[family-name:var(--font-grotesk)] text-sm lowercase truncate">{userEmail}</span>
-                <button onClick={async ()=> { await createBrowser().auth.signOut(); setUserEmail(null); }} className="ml-auto font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/50 hover:text-white underline underline-offset-2 shrink-0">sign out</button>
-              </div>
+              <>
+                <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3.5 h-11">
+                  <span className="font-[family-name:var(--font-grotesk)] text-sm lowercase truncate">{userEmail}</span>
+                  <button onClick={async ()=> { await createBrowser().auth.signOut(); setUserEmail(null); }} className="ml-auto font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/50 hover:text-white underline underline-offset-2 shrink-0">sign out</button>
+                </div>
+                {handle && handle!=="you" && (
+                  <button onClick={toggleAlerts} className="mt-2 w-full flex items-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3.5 h-11 text-left active:scale-[0.99]">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${alertsOn ? "bg-emerald-400" : "bg-white/25"}`} />
+                    <span className="font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/70">email me when someone feels/comments on @{handle}</span>
+                    <span className="ml-auto font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/40 shrink-0">{alertsOn ? "on" : "off"}</span>
+                  </button>
+                )}
+              </>
             ) : (
               <div className="mt-3 space-y-2">
                 <Button onClick={async ()=> { await createBrowser().auth.signInWithOAuth({ provider:"google", options:{ redirectTo: `${window.location.origin}/auth/callback` } }); }} className="w-full rounded-xl bg-white text-black hover:bg-white/90 h-11 font-[family-name:var(--font-grotesk)] lowercase text-sm font-medium">

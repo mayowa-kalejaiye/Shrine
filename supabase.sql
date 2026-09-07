@@ -98,3 +98,14 @@ drop policy if exists "insert reports" on reports;
 create policy "insert reports" on reports for insert with check (true);
 -- NOTE: no select policy on reports — anon clients cannot list reporters.
 create index if not exists reports_memory_idx on reports(memory_id, created_at desc);
+-- alerts: felt/comment reply notifications. NO policies at all — service role only,
+-- via /api/alerts (inserts use the server-verified session email, so nobody can
+-- subscribe someone else's address and spam them through our sender).
+create table if not exists alerts (
+  handle text not null,
+  email text not null,
+  created_at timestamptz default now(),
+  primary key (handle, email)
+);
+alter table alerts enable row level security;
+create index if not exists alerts_handle_idx on alerts(handle);

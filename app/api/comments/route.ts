@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { RESERVED, cleanHandle } from "@/lib/handles";
+import { notifySubscribers } from "@/lib/notify";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -35,5 +36,7 @@ export async function POST(req: Request) {
     .select("id")
     .single();
   if (error) return NextResponse.json({ error: "comment failed" }, { status: 500 });
+  // reply loop: tell the author someone replied (awaited — serverless freezes after response)
+  await notifySubscribers({ memoryId: b.memory_id, actorHandle: handle, kind: "comment", snippet: b.text.trim(), origin: req.headers.get("origin") || "" });
   return NextResponse.json({ ok: true, id: data.id });
 }

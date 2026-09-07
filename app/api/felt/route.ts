@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rateLimit, clientIp, rateLimitHeaders } from "@/lib/rate-limit";
 import { RESERVED, cleanHandle } from "@/lib/handles";
+import { notifySubscribers } from "@/lib/notify";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -38,6 +39,9 @@ async function felt(req: Request, add: boolean) {
   if (add) {
     const { error } = await sb.from("felt").insert({ memory_id: b.memory_id, handle });
     if (error && error.code !== "23505") return NextResponse.json({ error: "felt failed" }, { status: 500 });
+    // reply loop: tell the author someone felt them (awaited — serverless freezes after response)
+    // NOTE: `new URL()` unusable here — the Supabase `URL` const shadows the global.
+    await notifySubscribers({ memoryId: b.memory_id, actorHandle: handle, kind: "felt", snippet: "", origin: req.headers.get("origin") || "" });
   } else {
     await sb.from("felt").delete().eq("memory_id", b.memory_id).eq("handle", handle);
   }
