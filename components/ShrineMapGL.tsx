@@ -7,7 +7,7 @@ import { Shrine, CITIES } from "@/lib/shrine-data";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, selectedId, traceHandle }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null }){
+export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, selectedId, traceHandle, picked }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null, picked?: {lat:number,lng:number} | null }){
   const traceRef = useRef(traceHandle); useEffect(()=>{ traceRef.current = traceHandle; },[traceHandle]);
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map|null>(null);
@@ -501,6 +501,22 @@ export default function ShrineMapGL({ shrines, onPick, onHover, onSelect, select
   },[shrines]);
 
   const [locModal, setLocModal] = useState<null | { blocked: boolean }>(null);
+  // picked-spot preview — pulsing marker where your tap landed (tap-to-pin flow)
+  useEffect(()=>{
+    const map = mapRef.current;
+    if(!map) return;
+    const prev = (map as any)._pickMarker as mapboxgl.Marker | undefined;
+    try{ prev?.remove(); }catch{}
+    (map as any)._pickMarker = undefined;
+    if(!picked || typeof picked.lat!=="number" || typeof picked.lng!=="number") return;
+    const el = document.createElement("div");
+    el.style.cssText = `width:22px;height:22px;border:3px solid #fff;background:#ff3b30;border-radius:999px;box-shadow:0 0 0 6px rgba(255,59,48,0.35),0 0 18px rgba(255,59,48,0.8);`;
+    try{
+      const m = new mapboxgl.Marker({ element: el }).setLngLat([picked.lng, picked.lat]).addTo(map);
+      (map as any)._pickMarker = m;
+      return ()=> { try{ m.remove(); }catch{} };
+    }catch{}
+  },[picked?.lat, picked?.lng]);
   const isIOS = ()=> /iPad|iPhone|iPod/.test(navigator.userAgent) || ((navigator as any).platform==="MacIntel" && navigator.maxTouchPoints>1);
   const doLocate = ()=>{
     const map = mapRef.current; if(!map) return;

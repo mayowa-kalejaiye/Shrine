@@ -537,7 +537,15 @@ export default function ShrineFable(){
       {/* FULLSCREEN MAP — true fullscreen, nav floats on map */}
       <section className="relative h-[100dvh] w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
-          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} onHover={()=>{}} onSelect={setSelected} onPick={(lat,lng)=> { setPicked({lat,lng,label:`${lat.toFixed(3)}, ${lng.toFixed(3)}`}); }} />
+          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} picked={picked} onHover={()=>{}} onSelect={setSelected} onPick={(lat,lng)=> {
+            const coords = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+            setPicked({lat, lng, label: coords});
+            // upgrade raw coords to a real place name (search-then-tap flow)
+            fetch(`/api/geocode?lat=${lat}&lon=${lng}`).then(r=> r.json()).then(j=>{
+              const label = (j.address?.city || j.address?.town || j.address?.village || String(j.display_name || "").split(",")[0] || coords).toLowerCase();
+              setPicked(p=> (p && Math.abs(p.lat-lat)<1e-9 && Math.abs(p.lng-lng)<1e-9) ? {lat, lng, label} : p);
+            }).catch(()=>{});
+          }} />
         {/* trace banner — everywhere they've been */}
         {traceHandle && (
           <div className="absolute top-[64px] sm:top-[72px] left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-black/70 backdrop-blur-xl border border-white/15 rounded-full pl-4 pr-2 py-1.5 pointer-events-auto">
