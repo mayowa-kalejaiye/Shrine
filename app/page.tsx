@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SEED_SHRINES, Shrine, ShrineComment } from "@/lib/shrine-data";
 import { supabase } from "@/lib/supabase";
+import { fileToCover } from "@/lib/image";
 import { createClient as createBrowser } from "@/lib/supabase-client";
 import DatePicker from "@/components/DatePicker";
 import { MapPinIcon, ImageAdd01Icon, ViewIcon, Share01Icon, Download01Icon, PlusSignIcon, Location01Icon, ArrowRight01Icon, ArrowUpRight01Icon, FavouriteIcon, ArrowLeft01Icon } from "hugeicons-react";
@@ -329,7 +330,9 @@ export default function ShrineFable(){
       setHandleTaken(!!(mem && mem.length) || !!(usr && usr.length) || takenLocal);
     }catch{ setHandleTaken(false); }
   }
+  const [pinning, setPinning] = useState(false);
   async function pin(){
+    if(pinning) return;
     if(!line.trim() || !image) return;
     if(!picked) return alert("pick a location — search, use current, or tap map");
     const clean = handle.toLowerCase().replace(/[^a-z0-9_]/g,"").slice(0,20) || "you";
@@ -339,11 +342,12 @@ export default function ShrineFable(){
     const cover = photos[0] || image;
     const s: Shrine = { id: Math.random().toString(36).slice(2), image: cover, images: photos.length? photos : [cover], line: line.toLowerCase(), city: picked.label, lat: picked.lat, lng: picked.lng, handle: clean, createdAt: when };
     // persist via rate-limited API (8 pins / 10 min / IP) — falls back to local-only on failure
+    setPinning(true);
     try{
       const res = await fetch("/api/memories", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ handle: clean, city: s.city, lat: s.lat, lng: s.lng, line: s.line, image: capMedia(cover), images: (s.images||[]).map(capMedia) }) });
       if(res.status===429) toast("pin saved on your phone", { description: "you're pinning too fast — wait a bit" });
       else if(res.status===403) toast(`@${clean} is locked`, { description: "that @ belongs to a signed-in account" });
-    }catch{}
+    }catch{} finally{ setPinning(false); }
     // nearby trigger — check within 20km
     const nearby = shrines.filter(x=> haversine({lat:picked.lat,lng:picked.lng},{lat:x.lat,lng:x.lng})<20);
     if(nearby.length) toast(`nearby • ${nearby[0].city} • ${nearby.length} memories within 20km`, { description: `"${nearby[0].line.slice(0,48)}..." — someone felt close by` , duration: 5000});
@@ -889,7 +893,7 @@ export default function ShrineFable(){
                   )
                 ))}
               </div>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; if(photos.length>=3) return; if(!f.type.startsWith("image/")){ toast("photos only", { description: "video pins are off — pick a photo" }); (e.target as any).value=""; return; } if(f.size > 8*1024*1024){ toast("photo too big", { description: "8mb max — compress it first" }); (e.target as any).value=""; return; } const r=new FileReader(); r.onload=()=> { const url=String(r.result); setPhotos(p=> [...p, url].slice(0,3)); setImage(url); }; r.readAsDataURL(f); (e.target as any).value=""; }} />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; if(photos.length>=3) return; (async ()=>{ try{ const url = await fileToCover(f); setPhotos(p=> [...p, url].slice(0,3)); setImage(url); }catch(err){ const k = err instanceof Error ? err.message : ""; toast(k==="size" ? "photo too big" : "photos only", { description: k==="size" ? "even compressed — pick a smaller one" : "video pins are off — pick a photo" }); } })(); (e.target as any).value=""; }} />
             </div>
             <div>
               <div className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-[0.14em] text-white/40 mb-2">one line — why you can’t throw it away</div>
@@ -949,7 +953,7 @@ export default function ShrineFable(){
                 </div>
               )}
             </div>
-            <Button onClick={pin} disabled={(photos.length===0 && !image) || !line.trim() || !picked} className="w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">pin to world map <MapPinIcon size={16}/></Button>
+            <Button onClick={pin} disabled={(photos.length===0 && !image) || !line.trim() || !picked || pinning} className="w-full bg-white text-black hover:bg-white/90 rounded-full h-11 font-[family-name:var(--font-grotesk)] lowercase font-medium disabled:opacity-40">{pinning ? "pinning..." : <>pin to world map <MapPinIcon size={16}/></>}</Button>
             <p className="text-center font-[family-name:var(--font-grotesk)] text-xs lowercase text-white/25">free forever • unlimited pins • {picked? `pinned at ${picked.lat.toFixed(2)}, ${picked.lng.toFixed(2)}` : "pick anywhere on earth"}</p>
           </div>
         </DialogContent>

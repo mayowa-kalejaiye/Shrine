@@ -47,6 +47,19 @@ export async function POST(req: Request) {
 
   const sb = createClient(URL, ANON);
   await sb.from("users").upsert({ handle }, { onConflict: "handle" });
+  // idempotency: laggy double-taps send the same pin twice — same author+content
+  // within 2 min returns the original instead of duplicating.
+  const { data: dup } = await sb
+    .from("memories")
+    .select("id")
+    .eq("handle", handle)
+    .eq("line", b.line.toLowerCase().slice(0, 80))
+    .eq("city", b.city.slice(0, 80))
+    .eq("lat", b.lat)
+    .eq("lng", b.lng)
+    .gte("created_at", new Date(Date.now() - 120000).toISOString())
+    .limit(1);
+  if (dup && dup.length) return NextResponse.json({ ok: true, id: (dup[0] as any).id, deduped: true });
   const { data, error } = await sb
     .from("memories")
     .insert({ handle, city: b.city.slice(0, 80), lat: b.lat, lng: b.lng, line: b.line.toLowerCase().slice(0, 80), image: cover, images: imgs })
