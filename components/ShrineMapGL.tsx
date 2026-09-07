@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Location01Icon } from "hugeicons-react";
@@ -7,8 +7,7 @@ import { Shrine, CITIES } from "@/lib/shrine-data";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-export default function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, selectedId, traceHandle, picked }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onPickConfirm?: ()=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null, picked?: {lat:number,lng:number} | null }){
-  const traceRef = useRef(traceHandle); useEffect(()=>{ traceRef.current = traceHandle; },[traceHandle]);
+function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, selectedId, traceHandle, picked }: { shrines: Shrine[], onPick?: (lat:number,lng:number)=>void, onPickConfirm?: ()=>void, onHover?: (id:string|null)=>void, onSelect?: (s:Shrine)=>void, selectedId?: string|null, traceHandle?: string|null, picked?: {lat:number,lng:number} | null }){  const traceRef = useRef(traceHandle); useEffect(()=>{ traceRef.current = traceHandle; },[traceHandle]);
   // tap "+ pin" popup position (px in map container) — hidden on move/new tap
   const [tapPop, setTapPop] = useState<{x:number,y:number} | null>(null);
   // map search (find the area first, then tap the exact spot)
@@ -634,3 +633,7 @@ export default function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, o
     </div>
   );
 }
+
+// memoized: the page re-renders on every keystroke/selection — the GL map must not.
+// re-renders only when shrines/selection/pick actually change (stable callbacks required).
+export default memo(ShrineMapGL);

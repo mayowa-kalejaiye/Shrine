@@ -1,6 +1,6 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,15 @@ const SEEDS: Shrine[] = process.env.NEXT_PUBLIC_USE_SEED === "false" ? [] : SEED
 // media cap: photos stay small for fast loads (videos are off — picker rejects them)
 const capMedia = (u: string) => u.slice(0, 150000);
 
-export default function ShrineFable(){
-  const [shrines, setShrines] = useState<Shrine[]>(SEEDS);
+// live clock pill — isolated so the tick doesn't re-render the whole page + map.
+// (a 1s setState in the page root was forcing a full-tree render every second: the stutter.)
+function LiveClock(){
+  const [now, setNow] = useState(()=> new Date());
+  useEffect(()=>{ const id=setInterval(()=> setNow(new Date()), 15000); return ()=> clearInterval(id); },[]);
+  return <span suppressHydrationWarning>{now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>;
+}
+
+export default function ShrineFable(){  const [shrines, setShrines] = useState<Shrine[]>(SEEDS);
   const [open, setOpen] = useState(false);
   const [cityQuery, setCityQuery] = useState("");
   const [cityResults, setCityResults] = useState<{display_name:string, lat:number, lng:number, name:string}[]>([]);
@@ -40,7 +47,6 @@ export default function ShrineFable(){
   const [commentInput, setCommentInput] = useState("");
   const [showComments, setShowComments] = useState(false);
   const [selected, setSelected] = useState<Shrine|null>(null);
-  const [now, setNow] = useState<Date>(new Date());
   const [felt, setFelt] = useState<Record<string, boolean>>({});
   const [showTimeline, setShowTimeline] = useState(false);
   const [heroOpen, setHeroOpen] = useState(true);
@@ -73,6 +79,18 @@ export default function ShrineFable(){
     setSelected(first);
     toast(`@${pick} • ${first.city}`, { description: `"${first.line.slice(0,52)}..."`, duration: 3500 });
   }
+  // stable map callbacks — keep the memoized map from re-rendering with the page
+  const noopHover = useCallback(()=>{},[]);
+  const handlePick = useCallback((lat:number,lng:number)=> {
+    const coords = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
+    setPicked({lat, lng, label: coords});
+    // upgrade raw coords to a real place name (search-then-tap flow)
+    fetch(`/api/geocode?lat=${lat}&lon=${lng}`).then(r=> r.json()).then(j=>{
+      const label = (j.address?.city || j.address?.town || j.address?.village || String(j.display_name || "").split(",")[0] || coords).toLowerCase();
+      setPicked(p=> (p && Math.abs(p.lat-lat)<1e-9 && Math.abs(p.lng-lng)<1e-9) ? {lat, lng, label} : p);
+    }).catch(()=>{});
+  },[]);
+  const confirmPick = useCallback(()=> setOpen(true),[]);
   // collection refresh — re-pull live pins (throttled client-side: 1 per 15s)
   const [refreshing, setRefreshing] = useState(false);
   const lastRefresh = useRef(0);
@@ -83,10 +101,10 @@ export default function ShrineFable(){
     if(!supabase){ toast("you're offline", { description: "showing saved pins" }); return; }
     setRefreshing(true);
     try{
-      const { data, error } = await supabase.from("memories").select("*").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
+      const { data, error } = await supabase.from("memories").select("id,handle,city,lat,lng,line,image,created_at").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
       if(error) throw error;
       if(data){
-        const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, images:d.images?.length?d.images:[d.image], line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
+        const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, images:(d.images?.length?d.images:undefined), line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
         setShrines(prev=>{
           const ids = new Set(prev.map(p=> p.id));
           const fresh = db.filter(x=> !ids.has(x.id));
@@ -225,6 +243,25 @@ export default function ShrineFable(){
       try{ const all: ShrineComment[]=JSON.parse(localStorage.getItem("shrine_comments")||"[]"); setComments(all.filter(c=> c.memory_id===selected.id)); }catch{ setComments([]); }
     })();
   },[selected?.id]);
+  // full media on demand — list queries skip the heavy images[] column, so fetch
+  // the extra photos only when a memory is actually opened (seeds/local/complete skip).
+  useEffect(()=>{
+    if(!selected || !supabase) return;
+    if(selected.images && selected.images.length > 0) return;
+    let cancelled = false;
+    (async ()=>{
+      try{
+        const { data } = await supabase.from("memories").select("image,images").eq("id", selected.id).single();
+        const d = data as any;
+        if(!d || cancelled) return;
+        const full = (d.images?.length ? d.images : [d.image]).filter(Boolean);
+        if(!full.length) return;
+        setShrines(prev=> prev.map(x=> x.id===selected.id ? { ...x, image: d.image || x.image, images: full } : x));
+        setSelected(cur=> cur && cur.id===selected.id ? { ...cur, image: d.image || cur.image, images: full } : cur);
+      }catch{}
+    })();
+    return ()=> { cancelled = true; };
+  },[selected?.id]);
   const [handle, setHandle] = useState("you");
   // reply-loop alerts: email me when someone feels/comments on my handle.
   // (declared after `handle` — the status check reads it.)
@@ -253,7 +290,6 @@ export default function ShrineFable(){
   useEffect(()=>{ const h=localStorage.getItem("shrine_handle"); if(h) { setHandle(h); checkHandle(h); } },[]);
   const fileRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(()=>{ const id=setInterval(()=> setNow(new Date()), 1000); return ()=> clearInterval(id); },[]);
   // load felt
   useEffect(()=>{ const f=localStorage.getItem("shrine_felt"); if(f) try{ setFelt(JSON.parse(f))}catch{} },[]);
   useEffect(()=>{ localStorage.setItem("shrine_felt", JSON.stringify(felt)); },[felt]);
@@ -268,9 +304,9 @@ export default function ShrineFable(){
       // supabase persistence — traffic mode, no limit. hidden pins never reach the client map.
       if(supabase){
         try{
-          const { data } = await supabase.from("memories").select("*").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
+          const { data } = await supabase.from("memories").select("id,handle,city,lat,lng,line,image,created_at").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
           if(data && data.length){
-            const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, images:d.images?.length?d.images:[d.image], line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
+            const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, images:(d.images?.length?d.images:undefined), line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
             base = [...db, ...base.filter(b=> !db.find(x=> x.id===b.id))];
           } else if(SEEDS.length===0 && !s){
             base = [];
@@ -282,7 +318,9 @@ export default function ShrineFable(){
     };
     load();
   },[]);
-  useEffect(()=>{ try{ localStorage.setItem("shrine_pins", JSON.stringify(shrines.slice(0,400))); }catch{} },[shrines]);
+  // local cache keeps covers only for server pins (extras re-fetch on demand) —
+  // local-only pins keep everything (no server copy exists yet). UUIDs are 36 chars.
+  useEffect(()=>{ try{ const slim = shrines.slice(0,400).map(s=> (s.id.length > 20 && s.images && s.images.length > 1) ? { ...s, images: [s.images[0]] } : s); localStorage.setItem("shrine_pins", JSON.stringify(slim)); }catch{} },[shrines]);
 
   const searchTimer = useRef<any>(null);
   async function searchCity(q:string){
@@ -537,15 +575,7 @@ export default function ShrineFable(){
       {/* FULLSCREEN MAP — true fullscreen, nav floats on map */}
       <section className="relative h-[100dvh] w-full overflow-hidden bg-black">
         <div className="absolute inset-0">
-          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} picked={picked} onHover={()=>{}} onSelect={setSelected} onPickConfirm={()=> setOpen(true)} onPick={(lat,lng)=> {
-            const coords = `${lat.toFixed(3)}, ${lng.toFixed(3)}`;
-            setPicked({lat, lng, label: coords});
-            // upgrade raw coords to a real place name (search-then-tap flow)
-            fetch(`/api/geocode?lat=${lat}&lon=${lng}`).then(r=> r.json()).then(j=>{
-              const label = (j.address?.city || j.address?.town || j.address?.village || String(j.display_name || "").split(",")[0] || coords).toLowerCase();
-              setPicked(p=> (p && Math.abs(p.lat-lat)<1e-9 && Math.abs(p.lng-lng)<1e-9) ? {lat, lng, label} : p);
-            }).catch(()=>{});
-          }} />
+          <ShrineMap shrines={shrines} selectedId={selected?.id || null} traceHandle={traceHandle} picked={picked} onHover={noopHover} onSelect={setSelected} onPickConfirm={confirmPick} onPick={handlePick} />
         {/* trace banner — everywhere they've been */}
         {traceHandle && (
           <div className="absolute top-[64px] sm:top-[72px] left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-black/70 backdrop-blur-xl border border-white/15 rounded-full pl-4 pr-2 py-1.5 pointer-events-auto">
@@ -583,7 +613,7 @@ export default function ShrineFable(){
         {/* bottom bar — alive, clears mobile FABs */}
         <div className="absolute bottom-20 sm:bottom-6 left-3 right-3 sm:left-6 sm:right-auto flex flex-wrap gap-2 z-10 pointer-events-none">
           <span suppressHydrationWarning className="font-[family-name:var(--font-grotesk)] text-[11px] sm:text-xs lowercase tracking-[0.14em] bg-black/70 backdrop-blur-xl border border-white/15 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live • <span suppressHydrationWarning>{now.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span><span className="hidden min-[400px]:inline"> • 3d • weather</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> live • <LiveClock /><span className="hidden min-[400px]:inline"> • 3d • weather</span>
           </span>
           <span className="hidden sm:inline-flex font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-white text-black px-3 py-2 rounded-full">satellite • streets • weather alive</span>
         </div>
