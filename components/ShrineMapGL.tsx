@@ -269,7 +269,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       const s = shrines.find(x=> x.id===selectedId);
       if(!s) return;
       if(halo) halo.setData({ type:"FeatureCollection", features:[{ type:"Feature", geometry:{ type:"Point", coordinates:[s.lng, s.lat] }, properties:{} }] } as any);
-      map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:0, bearing:0, duration:2400, essential:true});
+      map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:55, bearing:(Math.random()-0.5)*30, duration:2400, essential:true});
       prevSelectedRef.current = selectedId;
     } else if(prevSelectedRef.current){
       if(halo) halo.setData({ type:"FeatureCollection", features:[] } as any);
@@ -394,7 +394,7 @@ function ShrineMapGL({ shrines, onPick, onPickConfirm, onHover, onSelect, select
       map.on("click", "unclustered-point", (e:any)=>{
         setTapPop(null);        const f = e.features?.[0]; if(!f) return;
         const s = shrines.find(x=> x.id===f.properties.id);
-        if(s){ onSelectRef.current?.(s); onHoverRef.current?.(s.id); map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:0, bearing:0, duration:2400, essential:true}); }
+        if(s){ onSelectRef.current?.(s); onHoverRef.current?.(s.id); map.flyTo({center:[s.lng, s.lat], zoom:19.5, pitch:55, bearing:(Math.random()-0.5)*30, duration:2400, essential:true}); }
       });
       map.on("mouseenter", "clusters", ()=> map.getCanvas().style.cursor="pointer");
       map.on("mouseleave", "clusters", ()=> map.getCanvas().style.cursor="");
