@@ -561,7 +561,7 @@ export default function ShrineFable(){
                   <button aria-label="next memory" onClick={()=> setSelected(next)} className="absolute top-2.5 right-3 w-8 h-8 rounded-full bg-black/40 backdrop-blur-xl grid place-items-center text-white hover:bg-black/60 active:scale-95">›</button>
                 </>
               )}
-              <button aria-label="close" onClick={()=> { setSelected(null); setEditing(false); setShareOpen(false); }} className="absolute top-2.5 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-xl grid place-items-center text-white/80 hover:text-white text-xs">✕</button>
+              {/* close = drag the sheet down (no button needed) */}
               <span className="absolute bottom-2.5 left-3 font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-wide bg-black/50 backdrop-blur-xl px-2.5 py-1 rounded-full pointer-events-none">{selected.city} • @{selected.handle}</span>
               <span className="absolute bottom-2.5 right-3 flex items-center gap-1.5 pointer-events-none">
                 {(selected.images && selected.images.length>1) && selected.images.slice(0,3).map((_,i)=>(
