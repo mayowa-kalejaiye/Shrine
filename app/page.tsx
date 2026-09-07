@@ -72,6 +72,30 @@ export default function ShrineFable(){
     setSelected(first);
     toast(`@${pick} • ${first.city}`, { description: `"${first.line.slice(0,52)}..."`, duration: 3500 });
   }
+  // collection refresh — re-pull live pins (throttled client-side: 1 per 15s)
+  const [refreshing, setRefreshing] = useState(false);
+  const lastRefresh = useRef(0);
+  async function refreshCollection(){
+    if(refreshing) return;
+    if(Date.now() - lastRefresh.current < 15000){ toast("fresh enough", { description: "collection refreshes every 15s" }); return; }
+    lastRefresh.current = Date.now();
+    if(!supabase){ toast("you're offline", { description: "showing saved pins" }); return; }
+    setRefreshing(true);
+    try{
+      const { data, error } = await supabase.from("memories").select("*").eq("hidden", false).order("created_at", {ascending:false}).limit(2000);
+      if(error) throw error;
+      if(data){
+        const db: Shrine[] = data.map((d:any)=> ({ id:d.id, image:d.image, images:d.images?.length?d.images:[d.image], line:d.line, city:d.city, lat:d.lat, lng:d.lng, handle:d.handle, createdAt:new Date(d.created_at).getTime() }));
+        setShrines(prev=>{
+          const ids = new Set(prev.map(p=> p.id));
+          const fresh = db.filter(x=> !ids.has(x.id));
+          return fresh.length ? [...fresh, ...prev] : prev;
+        });
+        toast("collection refreshed", { description: `${data.length} live memories` });
+      }
+    }catch{ toast("refresh failed — try again"); }
+    finally{ setRefreshing(false); }
+  }
   const [userEmail, setUserEmail] = useState<string|null>(null);
   const [magicEmail, setMagicEmail] = useState("");
   const [magicSent, setMagicSent] = useState(false);
@@ -678,7 +702,10 @@ export default function ShrineFable(){
       <div id="collection-drawer" className="fixed top-0 left-0 h-[100dvh] w-[92%] sm:w-[420px] bg-[#0f0f0f] border-r border-white/10 shadow-[24px_0_80px_rgba(0,0,0,0.6)] z-[60] -translate-x-full transition-transform duration-300 overflow-auto pb-[env(safe-area-inset-bottom)]">
         <div className="sticky top-0 z-50 bg-[#0f0f0f]/95 backdrop-blur-xl border-b border-white/10 px-4 h-[64px] flex items-center justify-between shrink-0">
           <span className="font-[family-name:var(--font-grotesk)] text-xs lowercase tracking-[0.14em] text-white/40">collection — {shrines.length} memories</span>
-          <button onClick={()=> document.getElementById("collection-drawer")?.classList.add("-translate-x-full")} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 grid place-items-center shrink-0">✕</button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={refreshCollection} disabled={refreshing} title="refresh live pins" className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 grid place-items-center disabled:opacity-40 active:rotate-180 transition-transform">{refreshing ? "…" : "↻"}</button>
+            <button onClick={()=> document.getElementById("collection-drawer")?.classList.add("-translate-x-full")} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 grid place-items-center shrink-0">✕</button>
+          </div>
         </div>
         <div className="p-4 space-y-3">
           <div className="relative">
